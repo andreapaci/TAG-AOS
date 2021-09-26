@@ -1,3 +1,4 @@
 #include "module.h"
+#include "arch-common.h"
 
-int get_phys_frame(unsigned long addr);
+unsigned long long get_phys_frame(unsigned long long addr);
