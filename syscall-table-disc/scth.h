@@ -13,7 +13,7 @@
 #define FREE_ENTRIES        ((int) 7)
 // Mettere ni_syscall**************************************
 
-// Logical page size in bytes
+// Logical page size in bytes (if not defined)
 #ifndef PAGE_SIZE_DEF
 #define PAGE_SIZE_DEF ((unsigned long long) 4096ULL)
 #endif
@@ -24,5 +24,4 @@
 
 // scth_disc.c
 void find_syscall_table(void);
-int syscall_insert(unsigned long* syscall_function);
 void syscall_clean(void);

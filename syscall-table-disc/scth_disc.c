@@ -5,7 +5,9 @@
  */ 
 
 
+
 #include "scth.h"
+#include "syscall-handle.h"
 
 unsigned long long* syscall_table_addr = 0;
 unsigned long long  sys_ni_address = 0;
@@ -167,6 +169,7 @@ int syscall_insert(unsigned long* syscall_function) {
     
     return 1;       
 }
+EXPORT_SYMBOL(syscall_insert);
 
 
 

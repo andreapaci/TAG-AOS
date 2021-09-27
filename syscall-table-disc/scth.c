@@ -7,6 +7,7 @@
 
 
 #include "scth.h"
+#include "syscall-handle.h"
 
 
 MODULE_LICENSE("GPL");
@@ -69,10 +70,10 @@ void cleanup_module(void) {
     // If TEST_SYSCALL Macro is defined delete the dummy system call
     #ifdef TEST_SYSCALL
     printk("%s: Removing dummy system call\n", MODNAME);
+    #endif
 
     syscall_clean();
     
-    #endif
 }
 
 
@@ -166,6 +167,14 @@ void cleanup_module(void) {
 [11321.628533] SCTH: Entry 6 of ni_syscall: 18446744071881500192
 [11321.698032] SCTH: Done
  * 
+
+
+
+
+
+
+ 18446744072579187456
+ 18446744072562427264
  * 
  * 
  */ 

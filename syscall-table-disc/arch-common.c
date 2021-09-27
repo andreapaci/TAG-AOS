@@ -10,8 +10,6 @@
 
 unsigned long __force_order;
 
-
-
 /**
  *  @brief  Get page table address from CR3 register, masking the register
  *          value
