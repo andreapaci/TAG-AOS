@@ -1,6 +1,6 @@
 #!/bin/bash
 
-echo "Cleaning enviroment"
+printf "\n******************\nCleaning enviroment\n\n"
 
 sudo rmmod TAGMOD
 sudo rmmod SCTH

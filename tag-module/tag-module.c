@@ -14,6 +14,7 @@ MODULE_DESCRIPTION("TAG-based message exchange");
 
 
 
+static void initialize(void);
 
 int init_module(void) {
 
@@ -26,11 +27,27 @@ int init_module(void) {
     }
 
     install_syscalls();
+
+    initialize();
     
 
     return 0;
 }
 
+
+static void initialize(void) {
+
+    // Initialize TAG Table which maps "key" with "Tag Key" and the relative buffer
+    tag_table = hashmap_new_with_allocator(
+        kzalloc, 0, kfree, sizeof(tag_table_entry), 
+        HASHMAP_CAP, SEED0, SEED1, 
+        hashmap_murmur, tag_compare, 0);
+    // SE NULL allora TERMINA
+    
+    //Initialize Bit Mask
+    tag_bitmask = 0;
+
+}
 
 
 

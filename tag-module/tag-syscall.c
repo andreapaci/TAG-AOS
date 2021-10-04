@@ -13,6 +13,37 @@ int tag_get(int key, int command, int permission) {
     PRINT
     printk("%s: Tag get has been called.\n", MODNAME);
 
+    // Creating new Tag Service
+    if(command == TAG_CREAT) {
+        
+        // Check if more Tag services can be created 
+        if(hashmap_count(tag_table) > MAX_TAGS) {
+            PRINT
+            printk("%s: Maximum Tag services reached (%s)\n", MODNAME, MAX_TAGS);
+            return -1;
+        }
+
+        // Check if a Tag with the same key is already existing
+        if(hashmap_get(tag_table, &(tag_table_entry){ .key = key}) != 0) {
+            PRINT
+            printk("%s: Tag with key %d already existing.\n", MODNAME, key);
+            return -1;
+        }
+
+        char* buffer = kzalloc(sizeof(char) * BUFFER_SIZE * LEVELS, GFP_ATOMIC);
+        if(buffer = 0) {
+            PRINT
+            printk("%s: Could not allocate memory buffer for Tag Service.\n", MODNAME);
+            return -1;
+        }
+
+        tag_table_entry = malloc7//
+
+    }
+    else if(command == TAG_OPEN) {
+
+    }
+
     return 0;
 }
 

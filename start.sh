@@ -1,31 +1,52 @@
 #!/bin/bash
 
+export TEST_FUNC=1
 export TEST_SYSCALL=0
 export MOD_DEBUG=1
 
-root_dir = $PWD
+#root_dir = $PWD
 
 sh clean.sh
 
-dmesg
+if [[ $TEST_FUNC -eq 1 ]]
+then
+    printf "\n******************\nTesting utilities functionalities\n\n"
+    
+    cd ./test
+    make test_func
+    ./test_func.o
+    make clean
 
-sudo dmesg -C
+else
+    
+    printf "\n******************\nTesting modules\n\n"
+    dmesg
 
-cd syscall-table-disc
+    sudo dmesg -C
 
-make all
-sudo insmod SCTH.ko
+    cd syscall-table-disc
 
-cd ../tag-module
+    make all
+    sudo insmod SCTH.ko
 
-make all
-sudo insmod TAGMOD.ko
+    cd ../tag-module
 
-cd ../test
+    make all
+    sudo insmod TAGMOD.ko
 
-#make test_syscall
-#./dummy_syscall.o
-make test_tag_sys
-./test_tag.o
+    cd ../test
+
+    if [[ $TEST_SYSCALL -eq 1 ]]
+    then
+        make test_syscall
+        ./dummy_syscall.o
+    else
+        make test_tag_sys
+        ./test_tag.o
+    fi
+
+fi
 
 cd ..
+
+printf "\n******************\nDone\n\n"

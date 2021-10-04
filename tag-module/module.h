@@ -19,8 +19,13 @@
 #include <asm/cacheflush.h>
 #include <asm/apic.h>
 #include <linux/syscalls.h>
+#include <linux/gfp.h>
 
 #include "../syscall-table-disc/syscall-handle.h"
+#include "hash-struct/hashmap.h"
+#include "util/bitmask.h"
+#include "tag-struct.h"
+
 
 #ifdef AUDIT
 #define PRINT if(1)
@@ -32,6 +37,8 @@
 
 #define MODNAME "TAG-MOD"
 
+extern struct hashmap*  tag_table;
+extern unsigned int     tag_bitmask;
 
 int install_syscalls(void);
 
