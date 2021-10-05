@@ -57,6 +57,7 @@ static void *bucket_item(struct bucket *entry) {
 }
 
 static uint64_t get_hash(struct hashmap *map, const void *key) {
+
     return map->hash(key, map->seed0, map->seed1) << 16 >> 16;
 }
 
@@ -233,10 +234,12 @@ void *hashmap_set(struct hashmap *map, void *item) {
         }
     }
 
-    
     struct bucket *entry = map->edata;
+
     entry->hash = get_hash(map, item);
+
     entry->dib = 1;
+
     memcpy(bucket_item(entry), item, map->elsize);
     
     size_t i = entry->hash & map->mask;

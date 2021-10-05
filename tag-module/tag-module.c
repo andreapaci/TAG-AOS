@@ -14,7 +14,8 @@ MODULE_DESCRIPTION("TAG-based message exchange");
 
 
 
-static void initialize(void);
+static int initialize(void);
+inline void* kzalloc_flag(size_t size) { return kzalloc(size, GFP_ATOMIC); } 
 
 int init_module(void) {
 
@@ -26,28 +27,57 @@ int init_module(void) {
         printk("%s: Installing system calls\n", MODNAME);
     }
 
-    install_syscalls();
+    if(install_syscalls() == 0) {
+        printk("%s: Error in installing system calls\n", MODNAME);
+        return -1;
+    }
 
-    initialize();
+    if(initialize() == -1) {
+        printk("%s: Error in initializing structs\n", MODNAME);
+        return -1;
+    }
     
 
     return 0;
 }
 
 
-static void initialize(void) {
+static int initialize(void) {
 
     // Initialize TAG Table which maps "key" with "Tag Key" and the relative buffer
-    tag_table = hashmap_new_with_allocator(
-        kzalloc, 0, kfree, sizeof(tag_table_entry), 
-        HASHMAP_CAP, SEED0, SEED1, 
-        hashmap_murmur, tag_compare, 0);
-    // SE NULL allora TERMINA
-    
-    //Initialize Bit Mask
-    tag_bitmask = 0;
 
+
+    //NON VA BENE PECHE KZALLOC USA DUE PARAM
+    tag_table = hashmap_new_with_allocator(
+        kzalloc_flag, 0, kfree, sizeof(tag_table_entry), 
+        HASHMAP_CAP, SEED0, SEED1, 
+        tag_hash, tag_compare, 0);
+    if(tag_table == 0) {
+         printk("%s: Error in creating TAG table\n", MODNAME);
+         return -1;
+
+    }
+    
+    // Initialize Bit Mask
+    tag_bitmask = initialize_bitmask(MAX_TAGS);
+    if(tag_bitmask == 0) {
+        printk("%s: Error in creating TAG bitmask\n", MODNAME);
+        return -1;
+    }
+
+    tag_buffer = kzalloc(MAX_TAGS * sizeof(char*), GFP_ATOMIC);
+    if(tag_buffer == 0) {
+        printk("%s: Error in creating TAG buffer\n", MODNAME);
+        return -1;
+    }
+
+    PRINT
+    printk("%s: Struct initialized.\n", MODNAME);
+
+    return 0;
 }
+
+
 
 
 
@@ -59,6 +89,9 @@ static void initialize(void) {
 
 
 void cleanup_module(void) {
-    printk("%s: Unmounting.\n", MODNAME);
 
+    printk("%s: Unmounting.\n", MODNAME);
+    
+    free_bitmask(tag_bitmask);
+    hashmap_free(tag_table);
 }

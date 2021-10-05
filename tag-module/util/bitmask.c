@@ -26,7 +26,7 @@ bitmask* initialize_bitmask(int number_bits) {
     bitmask->bits_per_slot  = slot_size * 8;
 }
 
-void clear_bitmask(bitmask* bitmask) {
+void free_bitmask(bitmask* bitmask) {
 
     dealloc(bitmask -> mask);
     dealloc(bitmask);
@@ -39,12 +39,14 @@ int get_avail_number(bitmask* bitmask) {
         unsigned long long slot_mask = *((bitmask -> mask) + i);
         
         int free_bit = get_free_bit(slot_mask, bitmask -> bits_per_slot);
-        
-        if(free_bit >= bitmask -> n_bits) return -1;
+      
 
         if(free_bit != -1){
+            int number = free_bit + i * (bitmask -> bits_per_slot);
+            
+            if(number >= bitmask -> n_bits) return -1;
             SET_BIT(((bitmask -> mask) + i), free_bit);
-            return free_bit + i * (bitmask -> bits_per_slot);
+            return number;
         }  
         
     }
@@ -59,7 +61,7 @@ int clear_number(bitmask* bitmask, int number){
     // Get correct mask slot
     int slot = number / (sizeof(unsigned long long) * 8);
     
-    if(slot > bitmask -> slots || number >= bitmask -> n_bits) return -1;
+    if(number >= bitmask -> n_bits) return -1;
 
     int bit = number % bitmask -> bits_per_slot; 
 

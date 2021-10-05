@@ -20,6 +20,6 @@ typedef struct bitmask_struct {
 } bitmask;
 
 bitmask* initialize_bitmask(int number_bits);
-void clear_bitmask(bitmask* bitmask);
+void free_bitmask(bitmask* bitmask);
 int get_avail_number(bitmask* bitmask);
 int clear_number(bitmask* bitmask, int number);
