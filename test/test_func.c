@@ -1,14 +1,13 @@
 #include <stdio.h>
+#include <stdlib.h>
 #include <malloc.h>
+#include <string.h>
+#include <x86intrin.h>
+#include <inttypes.h>
 #include "../tag-module/util/bitmask.h"
 #include "../tag-module/hash-struct/hashmap.h"
 
-#define SEED0 401861
-#define SEED1 879023
-#define HASHMAP_CAP 256
 
-int test_bitmask(void);
-int test_hashmap(void);
 
 int main(int argc, void** argv) {
 
@@ -603,7 +602,7 @@ int test_hashmap(void) {
     printf("[TEST_FUNC] Add 1 value\n");
 
 
-    printf("[TEST_FUNC] Added %d values\n", hashmap_count(map));
+    printf("[TEST_FUNC] Added %ld values\n", hashmap_count(map));
 
     if(hashmap_count(map) != 3) {
         printf("[TEST_FUNC] Number of entries should be 3!\n");
@@ -679,7 +678,40 @@ int test_hashmap(void) {
     }
     printf("[TEST_FUNC] Value deleted: %d, %s\n", data_ret -> key, data_ret -> buffer);
 
+    printf("[TEST_FUNC] Testing 260 values\n");
 
+    hashmap_set(map, &(data){ .key=2, .buffer="chiave2"});
+
+    for(int i = 4; i < 260; i++) {
+
+        char number[20];
+        sprintf(number,"chiave%d",i);
+
+        uint64_t cycle = __rdtsc();
+
+        hashmap_set(map, &(data){ .key=i, .buffer=number});
+
+        cycle = __rdtsc() - cycle;
+
+        printf("\t Time to set = %"PRIu64"\n", cycle);
+
+        cycle = __rdtsc();
+
+        data_ret = hashmap_get(map, &i);
+
+        cycle = __rdtsc() - cycle;
+
+        printf("\t Time to get = %"PRIu64"\n", cycle);
+
+        printf("[TEST_FUNC] Value returned: %d, %s\n", data_ret -> key, data_ret -> buffer);
+        
+        if(data_ret -> key != i || strcmp(data_ret -> buffer, number) != 0) {
+            printf("[TEST_FUNC] Wrong value returned\n");
+            return -1;
+        }
+        printf("[TEST_FUNC] Correct %d\n", i);
+    
+    }
 
     hashmap_free(map);
     

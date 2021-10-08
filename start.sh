@@ -1,7 +1,7 @@
 #!/bin/bash
 
-export TEST_FUNC=1
-export TEST_SYSCALL=0
+export TEST_FUNC=0
+export TEST_SYSCALL=1
 export MOD_DEBUG=1
 
 #root_dir = $PWD
@@ -29,18 +29,22 @@ else
     make all
     sudo insmod SCTH.ko
 
-    cd ../tag-module
-
-    make all
-    sudo insmod TAGMOD.ko
-
-    cd ../test
-
+    
     if [[ $TEST_SYSCALL -eq 1 ]]
     then
+        cd ../test
+
         make test_syscall
         ./dummy_syscall.o
     else
+
+        cd ../tag-module
+
+        make all
+        sudo insmod TAGMOD.ko
+
+        cd ../test
+
         make test_tag_sys
         ./test_tag.o
     fi

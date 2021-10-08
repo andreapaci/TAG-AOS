@@ -15,11 +15,22 @@ MODULE_AUTHOR("Andrea Paci <andrea.paci1998@gmail.com");
 MODULE_DESCRIPTION("System call table discovery and hacking");
 
 
-
 // If TEST_SYSCALL Macro is defined install a dummy system call
 #ifdef TEST_SYSCALL
+
+#define SEED0 401861
+#define SEED1 879023
+#define HASHMAP_CAP 256
+
+void test_syscall(void);
+int test_bitmask(void);
+int test_hashmap(void);
+
+
 __SYSCALL_DEFINEx(2, _trial, unsigned long, A, unsigned long, B){
         printk("%s: thread %d requests a trial sys_call with %lu and %lu as parameters\n",MODNAME,current->pid,A,B);
+
+        test_syscall();
 
         return 0;
     }
@@ -75,6 +86,10 @@ void cleanup_module(void) {
     syscall_clean();
     
 }
+
+
+
+
 
 
 /**
@@ -178,3 +193,19 @@ void cleanup_module(void) {
  * 
  * 
  */ 
+
+
+#ifdef TEST_SYSCALL
+
+
+void test_syscall(void) {
+
+
+
+
+
+}
+
+
+
+#endif
