@@ -4,9 +4,16 @@
 #include <string.h>
 #include <x86intrin.h>
 #include <inttypes.h>
-#include "../tag-module/util/bitmask.h"
-#include "../tag-module/hash-struct/hashmap.h"
+#include "../utils/include/bitmask.h"
+#include "backup_hash/hashmap.h"
 
+
+#define SEED0 401861
+#define SEED1 879023
+#define HASHMAP_CAP 256
+
+int test_bitmask(void);
+int test_hashmap(void);
 
 
 int main(int argc, void** argv) {
@@ -30,7 +37,9 @@ int main(int argc, void** argv) {
 
 int test_bitmask(void) {
 
-    bitmask* mask = initialize_bitmask(0);
+    bitmask_struct* mask;
+
+    mask = initialize_bitmask(0);
 
     if(mask == 0) printf("[TEST_FUNC] Error initalizing mask with size 0, Correct!\n");
     else return -1;
@@ -41,7 +50,6 @@ int test_bitmask(void) {
     else return -1;
 
     // NOTE: Automate this TEST FROM HERE --------------------------------
-
     mask = initialize_bitmask(1);
     if(mask == 0) return -1;
     
@@ -682,9 +690,13 @@ int test_hashmap(void) {
 
     hashmap_set(map, &(data){ .key=2, .buffer="chiave2"});
 
-    for(int i = 4; i < 260; i++) {
+    int tries, i;
+    tries = 1556;
+    i = 1;
 
-        char number[20];
+    for(; i < tries; i++) {
+
+        char *number = malloc(sizeof(char) * 20);
         sprintf(number,"chiave%d",i);
 
         uint64_t cycle = __rdtsc();
@@ -712,15 +724,20 @@ int test_hashmap(void) {
         printf("[TEST_FUNC] Correct %d\n", i);
     
     }
-
-    hashmap_free(map);
     
-    
-    
-    //FAI TEST VELOCITA'--------------------------------------------
+    printf("[TEST_FUNC] Freeing space\n");
 
+    i = 1;
+    for(; i < tries; i++) {
 
+        data_ret = (data *) hashmap_delete(map, &i);
+        if(data_ret == 0) { printf("[TEST_FUNC] Error in deleting element %d\n", i); return -1; }
+        printf("[TEST_FUNC] Value deleted: %d, %s\n", data_ret -> key, data_ret -> buffer);
+        free(data_ret -> buffer);
+        
+    }
 
+    hashmap_free(map);    
 
     printf("[TEST_FUNC] Test Hashmap executed correctly!\n");
 

@@ -11,7 +11,7 @@ clean:
 	$(MAKE) -C /lib/modules/$(shell uname -r)/build M=$(PWD) clean
 else
 obj-m += SCTH.o
-SCTH-objs += scth.o ptexplorer.o arch-common.o scth_disc.o
+SCTH-objs += scth_module.o ptexplorer/ptexplorer.o arch-common/arch-common.o scth_discovery.o ../utils/hash-struct/hashmap.o ../utils/bitmask/bitmask.o
 
 ifeq ($(MOD_DEBUG), 1)
 ccflags-y += -DAUDIT

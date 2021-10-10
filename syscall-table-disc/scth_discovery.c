@@ -7,7 +7,7 @@
 
 
 #include "scth.h"
-#include "syscall-handle.h"
+#include "include/syscall-handle.h"
 
 unsigned long long* syscall_table_addr = 0;
 unsigned long long  sys_ni_address = 0;
@@ -164,7 +164,7 @@ int syscall_insert(unsigned long* syscall_function) {
     *insertion_address = syscall_function;
     enable_WP(&flags, cr0);
 
-    printk("%s: Custom Syscall has been installed at address %llu with displacement %d\n", 
+    printk("%s: Custom Syscall has been installed at address %llu with displacement %llu\n", 
             MODNAME, &syscall_table_addr[ni_syscall[displacement]], ni_syscall[displacement]);
     
     return 1;       

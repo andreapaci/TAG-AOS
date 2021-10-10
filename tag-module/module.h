@@ -21,9 +21,9 @@
 #include <linux/syscalls.h>
 #include <linux/gfp.h>
 
-#include "../syscall-table-disc/syscall-handle.h"
-#include "hash-struct/hashmap.h"
-#include "util/bitmask.h"
+#include "../syscall-table-disc/include/syscall-handle.h"
+#include "../utils/include/bitmask.h"
+#include "../utils/include/hashmap.h"
 #include "tag-struct.h"
 
 
@@ -38,10 +38,7 @@
 #define MODNAME "TAG-MOD"
 
 extern struct hashmap*  tag_table;
-extern bitmask*         tag_bitmask;
+extern bitmask_struct*  tag_bitmask;
 extern char**           tag_buffer;
 
 int install_syscalls(void);
-
-//18446744072459649792
-//18446744072442889600

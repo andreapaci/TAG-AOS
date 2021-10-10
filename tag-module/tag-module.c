@@ -12,10 +12,26 @@ MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Andrea Paci <andrea.paci1998@gmail.com");
 MODULE_DESCRIPTION("TAG-based message exchange");
 
-
+struct hashmap*  tag_table;
+bitmask_struct*  tag_bitmask;
+char**           tag_buffer;
 
 static int initialize(void);
-inline void* kzalloc_flag(size_t size) { return kzalloc(size, GFP_ATOMIC); } 
+
+
+int tag_compare(const void* a, const void* b, void* udata) {
+    return ((tag_table_entry *) a) -> key - ((tag_table_entry *) b) -> key;
+}
+
+uint64_t tag_hash(const void *item, uint64_t seed0, uint64_t seed1 ) {
+    const tag_table_entry* entry = item;
+    return hashmap_sip( &(entry -> key), sizeof(int), seed0, seed1);
+}
+
+
+
+
+
 
 int init_module(void) {
 
@@ -49,7 +65,7 @@ static int initialize(void) {
 
     //NON VA BENE PECHE KZALLOC USA DUE PARAM
     tag_table = hashmap_new_with_allocator(
-        kzalloc_flag, 0, kfree, sizeof(tag_table_entry), 
+        0, 0, 0, sizeof(tag_table_entry), 
         HASHMAP_CAP, SEED0, SEED1, 
         tag_hash, tag_compare, 0);
     if(tag_table == 0) {

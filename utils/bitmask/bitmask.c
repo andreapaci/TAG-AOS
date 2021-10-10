@@ -1,22 +1,43 @@
-#include "bitmask.h"
+#include "../include/bitmask.h"
+
+#ifdef TEST_FUNC
+#include <malloc.h>
+#include <stdio.h>
+#else
+#include <linux/slab.h>
+#endif
+
+
+#ifdef TEST_FUNC
+static __always_inline void *alloc(size_t size) { return calloc(size / sizeof(unsigned long long), sizeof(unsigned long long)); }
+#else
+static __always_inline void *alloc(size_t size) { return kzalloc(size, GFP_ATOMIC); }
+#endif
+
+#ifdef TEST_FUNC
+static __always_inline void dealloc(void* obj) { free(obj); }
+#else
+static __always_inline void dealloc(void* obj) { kfree(obj); }
+#endif
+
+
+#define CHECK_BIT(mask, pos)    ((mask) &   (1ULL << pos))
+#define SET_BIT(mask, pos)     ((*mask) |=  (1ULL << pos))
+#define CLEAR_BIT(mask, pos)   ((*mask) &= ~(1ULL << pos))
 
 static inline int get_free_bit(unsigned long long mask, int bits_per_slot);
-static __always_inline void *alloc(size_t size);
-static __always_inline void dealloc(void* obj);
 
-
-
-bitmask* initialize_bitmask(int number_bits) {
+bitmask_struct* initialize_bitmask(int number_bits) {
 
     if(number_bits < 1) return 0;
 
-    bitmask* bitmask;
+    bitmask_struct* bitmask;
     int slot_size = sizeof(unsigned long long);
     int number_slot = number_bits / (slot_size * 8) + (number_bits % (slot_size * 8) != 0);
     unsigned long long* mask = alloc(sizeof(unsigned long long) * number_slot);
     if(mask == 0) return 0;
 
-    bitmask = alloc(sizeof(bitmask));
+    bitmask = alloc(sizeof(bitmask_struct));
     if(bitmask == 0) return 0;
 
     bitmask->mask           = mask;
@@ -24,17 +45,20 @@ bitmask* initialize_bitmask(int number_bits) {
     bitmask->slots          = number_slot;
     bitmask->slot_size      = slot_size;
     bitmask->bits_per_slot  = slot_size * 8;
+
+    return bitmask;
 }
 
-void free_bitmask(bitmask* bitmask) {
+void free_bitmask(bitmask_struct* bitmask) {
 
     dealloc(bitmask -> mask);
     dealloc(bitmask);
 }
 
-int get_avail_number(bitmask* bitmask) {
+int get_avail_number(bitmask_struct* bitmask) {
      
-    for(int i = 0; i < bitmask -> slots; i++) {
+    int i; 
+    for(i = 0; i < bitmask -> slots; i++) {
         
         unsigned long long slot_mask = *((bitmask -> mask) + i);
         
@@ -56,7 +80,7 @@ int get_avail_number(bitmask* bitmask) {
 }
 
 
-int clear_number(bitmask* bitmask, int number){
+int clear_number(bitmask_struct* bitmask, int number){
 
     // Get correct mask slot
     int slot = number / (sizeof(unsigned long long) * 8);
@@ -78,20 +102,10 @@ int clear_number(bitmask* bitmask, int number){
 
 
 static inline int get_free_bit(unsigned long long mask, int bits_per_slot) {
-    for(int bit = 0; bit < bits_per_slot; bit++) {
+    int bit;
+    for(bit = 0; bit < bits_per_slot; bit++) {
         if(CHECK_BIT(mask, bit) == 0) return bit;
     }
     return -1;
 }
 
-#ifdef TEST_FUNC
-static __always_inline void *alloc(size_t size) { return calloc(size / sizeof(unsigned long long), sizeof(unsigned long long)); }
-#else
-static __always_inline void *alloc(size_t size) { return kzalloc(size, GFP_ATOMIC); }
-#endif
-
-#ifdef TEST_FUNC
-static __always_inline void dealloc(void* obj) { free(obj); }
-#else
-static __always_inline void dealloc(void* obj) { kfree(obj); }
-#endif

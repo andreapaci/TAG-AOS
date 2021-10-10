@@ -23,13 +23,14 @@ int tag_get(int key, int command, int permission) {
             return -1;
         }
 
+        
         // Check if a Tag with the same key is already existing
         if(hashmap_get(tag_table, &(tag_table_entry){ .key = key}) != 0) {
             PRINT
             printk("%s: Tag with key %d already existing.\n", MODNAME, key);
             return -1;
         }
-
+        
         char* buffer = kzalloc(sizeof(char) * BUFFER_SIZE * LEVELS, GFP_ATOMIC);
         if(buffer = 0) {
             PRINT
@@ -37,7 +38,13 @@ int tag_get(int key, int command, int permission) {
             return -1;
         }
 
-        tag_table_entry = malloc7//
+        //tag_table_entry = malloc7//
+
+
+//Il compare lo facciamo unendo le stringhe key e tag_key, e il fatto che una chiave è presa o no, lo facciamo con
+//hashmap_get, se ritorna null allora si leva
+//Inoltre, ricordati che quanti si fa tag_send e recv, fare un controllo preventivo se il buffer esiste
+//inoltre, allo smontaggio, elimina tutte le entry
 
     }
     else if(command == TAG_OPEN) {

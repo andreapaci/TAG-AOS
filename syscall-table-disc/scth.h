@@ -1,5 +1,5 @@
 #include "module.h"
-#include "ptexplorer.h"
+#include "ptexplorer/ptexplorer.h"
 
 
 // Start and End address for Kernel Address Space and 
@@ -22,6 +22,6 @@
 #define PAGE_BITMASK ((unsigned long long) 0xfffffffffffff000ULL)
   
 
-// scth_disc.c
+// scth_discovery.c
 void find_syscall_table(void);
 void syscall_clean(void);

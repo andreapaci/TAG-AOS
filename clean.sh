@@ -18,3 +18,5 @@ cd ../test
 make clean
 
 cd ..
+
+printf "\n******************\nCleaning done.\n\n"
