@@ -19,15 +19,6 @@ char**           tag_buffer;
 static int initialize(void);
 
 
-int tag_compare(const void* a, const void* b, void* udata) {
-    return ((tag_table_entry *) a) -> key - ((tag_table_entry *) b) -> key;
-}
-
-uint64_t tag_hash(const void *item, uint64_t seed0, uint64_t seed1 ) {
-    const tag_table_entry* entry = item;
-    return hashmap_sip( &(entry -> key), sizeof(int), seed0, seed1);
-}
-
 
 
 

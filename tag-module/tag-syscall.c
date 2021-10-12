@@ -15,44 +15,98 @@ int tag_get(int key, int command, int permission) {
 
     // Creating new Tag Service
     if(command == TAG_CREAT) {
+
+
+        // Impostare un try_lock che se fallisce (con stessa chiave) allora vuol dire che qualcun altro sta già creando lo stesso servizio (che si fa?)
+        //Serializza l'operazioni su dati comuni come la bitmask
+        if(key < 0) {
+            PRINT
+            printk("%s: Key is invalid (< 0)\n", MODNAME);
+            return -EINVAL; 
+        }
         
         // Check if more Tag services can be created 
         if(hashmap_count(tag_table) > MAX_TAGS) {
             PRINT
             printk("%s: Maximum Tag services reached (%s)\n", MODNAME, MAX_TAGS);
-            return -1;
+            return -EMAXTAG;
         }
 
-        
-        // Check if a Tag with the same key is already existing
-        if(hashmap_get(tag_table, &(tag_table_entry){ .key = key}) != 0) {
-            PRINT
-            printk("%s: Tag with key %d already existing.\n", MODNAME, key);
-            return -1;
-        }
-        
-        char* buffer = kzalloc(sizeof(char) * BUFFER_SIZE * LEVELS, GFP_ATOMIC);
+
+        // Alloc TAG service buffer        
+        char* buffer;
+        buffer = kzalloc(sizeof(char) * BUFFER_SIZE * LEVELS, GFP_ATOMIC);
         if(buffer = 0) {
             PRINT
             printk("%s: Could not allocate memory buffer for Tag Service.\n", MODNAME);
-            return -1;
+            return -ENOMEM;
         }
 
-        //tag_table_entry = malloc7//
+        // Get available tag number
+        int tag_key; 
+        tag_key = get_avail_number(tag_bitmask);
+        printk("%s: tag_key addr %p\n", MODNAME, &tag_key);
+        if(tag_key < 0) {
+            PRINT
+            printk("%s: No tag_key avaliable\n", MODNAME);
+            return -EPROTO;
+        }
 
+        //if key IPC_PRIVATE no need to add it to the tag_table
+        if(key != IPC_PRIVATE) {
 
-//Il compare lo facciamo unendo le stringhe key e tag_key, e il fatto che una chiave è presa o no, lo facciamo con
-//hashmap_get, se ritorna null allora si leva
-//Inoltre, ricordati che quanti si fa tag_send e recv, fare un controllo preventivo se il buffer esiste
-//inoltre, allo smontaggio, elimina tutte le entry
+            // Check if a Tag with the same key is already existing
+            if(hashmap_get(tag_table, &(tag_table_entry){ .key = key}) != 0) {
+                PRINT
+                printk("%s: Tag with key %d already existing.\n", MODNAME, key);
+                return -EBUSY;
+            }
+
+            // Add new entry to the hashmap          
+            if(hashmap_set(tag_table, &(tag_table_entry){ .key = key, .tag_key = tag_key}) == 0 && hashmap_oom(tag_table)) {
+                PRINT
+                printk("%s: Could not allocate hash struct entry.\n", MODNAME);
+                return -ENOMEM;
+            }
+        }
+
+        (*tag_buffer)[tag_key] = buffer;
+
+        return tag_key;
 
     }
     else if(command == TAG_OPEN) {
+        
+        if(key == IPC_PRIVATE) {
+            PRINT
+            printk("%s: Key IPC_PRIVATE for open is invalid\n", MODNAME);
+            return -EINVAL; 
+        }
 
+        // Check if a Tag with the same key is already existing
+        tag_table_entry *entry;
+        entry = hashmap_get(tag_table, &(tag_table_entry){ .key = key});
+        
+        if(entry == 0) {
+            PRINT
+            printk("%s: Tag with key %d does not exist.\n", MODNAME, key);
+            return -ENODATA;
+        }
+
+        return entry -> tag_key;
+        
     }
-
-    return 0;
+    
+    PRINT
+    printk("%s: Command is invalid\n", MODNAME);
+    return -EINVAL; 
 }
+
+
+//NOTA--------------------------
+//Inoltre, ricordati che quanti si fa tag_send e recv, fare un controllo preventivo se il buffer esiste
+//inoltre, allo smontaggio, elimina tutte le entry
+//Fai le FREE
 
 int tag_send(int tag, int level, char* buffer, size_t size) { 
 
