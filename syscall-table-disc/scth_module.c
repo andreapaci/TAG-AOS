@@ -230,7 +230,7 @@ void test_syscall(void) {
 
 int test_bitmask(void) {
 
-    bitmask_struct* mask = initialize_bitmask(0);
+    bitmask_t* mask = initialize_bitmask(0);
 
     if(mask == 0) printk("[TEST_FUNC]: Error initalizing mask with size 0, Correct!\n");
     else return -1;

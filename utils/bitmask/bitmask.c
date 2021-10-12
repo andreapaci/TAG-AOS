@@ -27,17 +27,17 @@ static __always_inline void dealloc(void* obj) { kfree(obj); }
 
 static inline int get_free_bit(unsigned long long mask, int bits_per_slot);
 
-bitmask_struct* initialize_bitmask(int number_bits) {
+bitmask_t* initialize_bitmask(int number_bits) {
 
     if(number_bits < 1) return 0;
 
-    bitmask_struct* bitmask;
+    bitmask_t* bitmask;
     int slot_size = sizeof(unsigned long long);
     int number_slot = number_bits / (slot_size * 8) + (number_bits % (slot_size * 8) != 0);
     unsigned long long* mask = alloc(sizeof(unsigned long long) * number_slot);
     if(mask == 0) return 0;
 
-    bitmask = alloc(sizeof(bitmask_struct));
+    bitmask = alloc(sizeof(bitmask_t));
     if(bitmask == 0) return 0;
 
     bitmask->mask           = mask;
@@ -49,13 +49,13 @@ bitmask_struct* initialize_bitmask(int number_bits) {
     return bitmask;
 }
 
-void free_bitmask(bitmask_struct* bitmask) {
+void free_bitmask(bitmask_t* bitmask) {
 
     dealloc(bitmask -> mask);
     dealloc(bitmask);
 }
 
-int get_avail_number(bitmask_struct* bitmask) {
+int get_avail_number(bitmask_t* bitmask) {
      
     int i; 
     for(i = 0; i < bitmask -> slots; i++) {
@@ -80,7 +80,7 @@ int get_avail_number(bitmask_struct* bitmask) {
 }
 
 
-int clear_number(bitmask_struct* bitmask, int number){
+int clear_number(bitmask_t* bitmask, int number){
 
     // Get correct mask slot
     int slot = number / (sizeof(unsigned long long) * 8);

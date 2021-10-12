@@ -12,16 +12,11 @@ MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Andrea Paci <andrea.paci1998@gmail.com");
 MODULE_DESCRIPTION("TAG-based message exchange");
 
-struct hashmap*  tag_table;
-bitmask_struct*  tag_bitmask;
-char**           tag_buffer;
+hashmap_t*  tag_table;
+bitmask_t*  tag_bitmask;
+tag_t*      tag;
 
 static int initialize(void);
-
-
-
-
-
 
 
 int init_module(void) {
@@ -56,7 +51,7 @@ static int initialize(void) {
 
     //NON VA BENE PECHE KZALLOC USA DUE PARAM
     tag_table = hashmap_new_with_allocator(
-        0, 0, 0, sizeof(tag_table_entry), 
+        0, 0, 0, sizeof(tag_table_entry_t), 
         HASHMAP_CAP, SEED0, SEED1, 
         tag_hash, tag_compare, 0);
     if(tag_table == 0) {
@@ -72,7 +67,8 @@ static int initialize(void) {
         return -1;
     }
 
-    tag_buffer = kzalloc(MAX_TAGS * sizeof(char*), GFP_ATOMIC);
+    // Initialize Tag pointer
+    tag = kzalloc(MAX_TAGS * sizeof(tag_t), GFP_ATOMIC);
     if(tag_buffer == 0) {
         printk("%s: Error in creating TAG buffer\n", MODNAME);
         return -1;

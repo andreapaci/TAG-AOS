@@ -37,8 +37,8 @@
 
 #define MODNAME "TAG-MOD"
 
-extern struct hashmap*  tag_table;
-extern bitmask_struct*  tag_bitmask;
-extern char**           tag_buffer;
+extern hashmap_t*   tag_table;
+extern bitmask_t*   tag_bitmask;
+extern tag_t*       tag;
 
 int install_syscalls(void);

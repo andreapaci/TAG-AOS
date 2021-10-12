@@ -26,51 +26,81 @@ int tag_get(int key, int command, int permission) {
         }
         
         // Check if more Tag services can be created 
-        if(hashmap_count(tag_table) > MAX_TAGS) {
+        if(hashmap_count(tag_table) >= MAX_TAGS) {
             PRINT
             printk("%s: Maximum Tag services reached (%s)\n", MODNAME, MAX_TAGS);
             return -EMAXTAG;
         }
 
-
-        // Alloc TAG service buffer        
-        char* buffer;
-        buffer = kzalloc(sizeof(char) * BUFFER_SIZE * LEVELS, GFP_ATOMIC);
-        if(buffer = 0) {
-            PRINT
-            printk("%s: Could not allocate memory buffer for Tag Service.\n", MODNAME);
-            return -ENOMEM;
-        }
-
         // Get available tag number
         int tag_key; 
+
+
+        //LOCK--------
+
+        
         tag_key = get_avail_number(tag_bitmask);
         printk("%s: tag_key addr %p\n", MODNAME, &tag_key);
         if(tag_key < 0) {
             PRINT
             printk("%s: No tag_key avaliable\n", MODNAME);
+            //UNLOCK--------
             return -EPROTO;
         }
 
         //if key IPC_PRIVATE no need to add it to the tag_table
         if(key != IPC_PRIVATE) {
-
+            
             // Check if a Tag with the same key is already existing
             if(hashmap_get(tag_table, &(tag_table_entry){ .key = key}) != 0) {
                 PRINT
                 printk("%s: Tag with key %d already existing.\n", MODNAME, key);
+                //UNLOCK--------
+                if(clear_number(tag_bitmask, tag_key) != 1)
+                    printk("%s: Could not clear %d from bitmask.\n", MODNAME, tag_key);
+              
                 return -EBUSY;
             }
 
+            
             // Add new entry to the hashmap          
             if(hashmap_set(tag_table, &(tag_table_entry){ .key = key, .tag_key = tag_key}) == 0 && hashmap_oom(tag_table)) {
                 PRINT
                 printk("%s: Could not allocate hash struct entry.\n", MODNAME);
+                  //UNLOCK--------
                 return -ENOMEM;
             }
+
+            
         }
 
-        (*tag_buffer)[tag_key] = buffer;
+        //UNLOCK--------
+
+        // Alloc TAG service buffer        
+        tag_level_t* tag_level;
+        tag_level = kzalloc(sizeof(tag_level_t) * LEVELS, GFP_ATOMIC);
+        if(tag_level = 0) {
+            PRINT
+            printk("%s: Could not allocate memory for Tag Service levels.\n", MODNAME);
+            return -ENOMEM;
+        }
+
+
+        tag_t* tag_entry = kzalloc(sizeof(tag_t), GFP_ATOMIC);
+        if(tag_entry == 0) {
+            PRINT
+            printk("%s: Could not allocate memory for Tag Service entry.\n", MODNAME);
+            return -ENOMEM;
+        }
+
+
+        
+        tag_entry -> tag_key = tag_key;
+        tag_entry -> permission = 0;
+        tag_entry -> pid = current -> pid;
+        tag_entry -> tag_level = tag_level;
+
+        tag[tag_key] = tag_entry;
 
         return tag_key;
 
@@ -84,7 +114,7 @@ int tag_get(int key, int command, int permission) {
         }
 
         // Check if a Tag with the same key is already existing
-        tag_table_entry *entry;
+        tag_table_entry_t *entry;
         entry = hashmap_get(tag_table, &(tag_table_entry){ .key = key});
         
         if(entry == 0) {

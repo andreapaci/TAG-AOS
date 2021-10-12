@@ -37,7 +37,7 @@ int main(int argc, void** argv) {
 
 int test_bitmask(void) {
 
-    bitmask_struct* mask;
+    bitmask_t* mask;
 
     mask = initialize_bitmask(0);
 
