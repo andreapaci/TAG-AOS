@@ -23,6 +23,8 @@ MODULE_DESCRIPTION("System call table discovery and hacking");
 
 #include "../utils/include/bitmask.h"
 #include "../utils/include/hashmap.h"
+#include "../utils/include/common.h"
+
 #include "include/syscall-handle.h"
 
 #define SEED0 401861
@@ -495,7 +497,20 @@ int test_bitmask(void) {
 
     int i = 0;
     for(; i < 65; i++) {
-        int number = get_avail_number(mask);
+
+        int number;
+        unsigned long long cycle;
+
+        cycle = rdtsc_fenced();
+
+        number = get_avail_number(mask);
+
+        cycle = rdtsc_fenced() - cycle;
+
+
+        printk("\t Time to get free number = %llu\n", cycle);
+
+        
         if(number != i){ 
             printk("[TEST_FUNC]: Error in getting new number: %d\n", number);
             return -1;
@@ -543,7 +558,19 @@ int test_bitmask(void) {
 
     i = 0;
     for(; i < 134; i++) {
-        int number = get_avail_number(mask);
+        
+        int number;
+        unsigned long long cycle;
+
+        cycle = rdtsc_fenced();
+
+        number = get_avail_number(mask);
+
+        cycle = rdtsc_fenced() - cycle;
+
+
+        printk("\t Time to get free number = %llu\n", cycle);
+
         if(number != i){ 
             printk("[TEST_FUNC]: Error in getting new number: %d\n", number);
             return -1;
@@ -897,20 +924,24 @@ int test_hashmap(void) {
         if(number == 0) { printk("[TEST_FUNC]: Error in allocating buffer memory for %d\n", i); return -1;}
         sprintf(number,"chiave%d", i);
 
-        unsigned long long cycle = rdtsc();
-
+        unsigned long long cycle;
+        
+        cycle = rdtsc_fenced();
 
         hashmap_set(map, &(data){ .key=i, .buffer=number});
 
-        cycle = rdtsc() - cycle;
+        cycle = rdtsc_fenced() - cycle;
+
 
         printk("\t Time to set = %llu\n", cycle);
 
-        cycle = rdtsc();
+
+        cycle = rdtsc_fenced();
 
         data_ret = hashmap_get(map, &i);
 
-        cycle = rdtsc() - cycle;
+        cycle = rdtsc_fenced() - cycle;
+
 
         printk("\t Time to get = %llu\n", cycle);
         if(data_ret == 0) {

@@ -60,7 +60,12 @@ int get_avail_number(bitmask_t* bitmask) {
     int i; 
     for(i = 0; i < bitmask -> slots; i++) {
         
-        unsigned long long slot_mask = *((bitmask -> mask) + i);
+        unsigned long long slot_mask;
+        slot_mask = *((bitmask -> mask) + i);
+
+        // Mask is full
+        if(slot_mask == 0xFFFFFFFFFFFFFFFF) continue;
+
         
         int free_bit = get_free_bit(slot_mask, bitmask -> bits_per_slot);
       

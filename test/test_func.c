@@ -5,6 +5,7 @@
 #include <x86intrin.h>
 #include <inttypes.h>
 #include "../utils/include/bitmask.h"
+#include "../utils/include/common.h"
 #include "backup_hash/hashmap.h"
 
 
@@ -302,7 +303,20 @@ int test_bitmask(void) {
     else{ printf("[TEST_FUNC] Wrong!\n"); return -1; }
 
     for(int i = 0; i < 65; i++) {
-        int number = get_avail_number(mask);
+        
+        int number;
+        unsigned long long cycle;
+
+        cycle = rdtsc_fenced();
+
+        number = get_avail_number(mask);
+
+        cycle = rdtsc_fenced() - cycle;
+
+
+        printf("\t Time to get free number = %llu\n", cycle);
+
+        
         if(number != i){ 
             printf("[TEST_FUNC] Error in getting new number: %d\n", number);
             return -1;
@@ -349,7 +363,19 @@ int test_bitmask(void) {
     else{ printf("[TEST_FUNC] Wrong!\n"); return -1; }
 
     for(int i = 0; i < 134; i++) {
-        int number = get_avail_number(mask);
+
+        int number;
+        unsigned long long cycle;
+
+        cycle = rdtsc_fenced();
+
+        number = get_avail_number(mask);
+
+        cycle = rdtsc_fenced() - cycle;
+
+
+        printf("\t Time to get free number = %llu\n", cycle);
+
         if(number != i){ 
             printf("[TEST_FUNC] Error in getting new number: %d\n", number);
             return -1;
@@ -699,21 +725,26 @@ int test_hashmap(void) {
         char *number = malloc(sizeof(char) * 20);
         sprintf(number,"chiave%d",i);
 
-        uint64_t cycle = __rdtsc();
+        unsigned long long cycle;
+        
+        cycle = rdtsc_fenced();
 
         hashmap_set(map, &(data){ .key=i, .buffer=number});
 
-        cycle = __rdtsc() - cycle;
+        cycle = rdtsc_fenced() - cycle;
 
-        printf("\t Time to set = %"PRIu64"\n", cycle);
 
-        cycle = __rdtsc();
+        printf("\t Time to set = %llu\n", cycle);
+
+
+        cycle = rdtsc_fenced();
 
         data_ret = hashmap_get(map, &i);
 
-        cycle = __rdtsc() - cycle;
+        cycle = rdtsc_fenced() - cycle;
 
-        printf("\t Time to get = %"PRIu64"\n", cycle);
+
+        printf("\t Time to get = %llu\n", cycle);
 
         printf("[TEST_FUNC] Value returned: %d, %s\n", data_ret -> key, data_ret -> buffer);
         

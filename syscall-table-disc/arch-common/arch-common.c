@@ -65,3 +65,7 @@ inline void enable_WP(unsigned long* flags, unsigned long cr0) {
     asm volatile("mfence":::"memory");
     
 }
+
+
+
+
