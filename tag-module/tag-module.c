@@ -68,8 +68,8 @@ static int initialize(void) {
     }
 
     // Initialize Tag pointer
-    tag = kzalloc(MAX_TAGS * sizeof(tag_t), GFP_ATOMIC);
-    if(tag_buffer == 0) {
+    tag = kzalloc(sizeof(tag_t) * MAX_TAGS, GFP_ATOMIC);
+    if(tag == 0) {
         printk("%s: Error in creating TAG buffer\n", MODNAME);
         return -1;
     }

@@ -13,18 +13,17 @@ int tag_get(int key, int command, int permission) {
     PRINT
     printk("%s: Tag get has been called.\n", MODNAME);
 
+    // Impostare un try_lock che se fallisce (con stessa chiave) allora vuol dire che qualcun altro sta già creando lo stesso servizio (che si fa?)
+    //Serializza l'operazioni su dati comuni come la bitmask
+    if(key < 0) {
+        PRINT
+        printk("%s: Key is invalid (< 0)\n", MODNAME);
+        return -EINVAL; 
+    }
+
     // Creating new Tag Service
     if(command == TAG_CREAT) {
 
-
-        // Impostare un try_lock che se fallisce (con stessa chiave) allora vuol dire che qualcun altro sta già creando lo stesso servizio (che si fa?)
-        //Serializza l'operazioni su dati comuni come la bitmask
-        if(key < 0) {
-            PRINT
-            printk("%s: Key is invalid (< 0)\n", MODNAME);
-            return -EINVAL; 
-        }
-        
         // Check if more Tag services can be created 
         if(hashmap_count(tag_table) >= MAX_TAGS) {
             PRINT
@@ -52,22 +51,25 @@ int tag_get(int key, int command, int permission) {
         if(key != IPC_PRIVATE) {
             
             // Check if a Tag with the same key is already existing
-            if(hashmap_get(tag_table, &(tag_table_entry){ .key = key}) != 0) {
+            if(hashmap_get(tag_table, &(tag_table_entry_t){ .key = key}) != 0) {
                 PRINT
                 printk("%s: Tag with key %d already existing.\n", MODNAME, key);
-                //UNLOCK--------
+                
                 if(clear_number(tag_bitmask, tag_key) != 1)
                     printk("%s: Could not clear %d from bitmask.\n", MODNAME, tag_key);
-              
+                //UNLOCK--------
                 return -EBUSY;
             }
 
             
             // Add new entry to the hashmap          
-            if(hashmap_set(tag_table, &(tag_table_entry){ .key = key, .tag_key = tag_key}) == 0 && hashmap_oom(tag_table)) {
+            if(hashmap_set(tag_table, &(tag_table_entry_t){ .key = key, .tag_key = tag_key}) == 0 && hashmap_oom(tag_table)) {
                 PRINT
                 printk("%s: Could not allocate hash struct entry.\n", MODNAME);
-                  //UNLOCK--------
+                
+                if(clear_number(tag_bitmask, tag_key) != 1)
+                    printk("%s: Could not clear %d from bitmask.\n", MODNAME, tag_key);
+                //UNLOCK--------
                 return -ENOMEM;
             }
 
@@ -100,7 +102,7 @@ int tag_get(int key, int command, int permission) {
         tag_entry -> pid = current -> pid;
         tag_entry -> tag_level = tag_level;
 
-        tag[tag_key] = tag_entry;
+        tag[tag_key] = *tag_entry;
 
         return tag_key;
 
@@ -115,7 +117,7 @@ int tag_get(int key, int command, int permission) {
 
         // Check if a Tag with the same key is already existing
         tag_table_entry_t *entry;
-        entry = hashmap_get(tag_table, &(tag_table_entry){ .key = key});
+        entry = hashmap_get(tag_table, &(tag_table_entry_t){ .key = key});
         
         if(entry == 0) {
             PRINT
