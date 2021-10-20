@@ -728,6 +728,12 @@ int test_hashmap(void) {
         unsigned long long cycle;
         
         cycle = rdtsc_fenced();
+        cycle = rdtsc_fenced() - cycle;
+        printf("\t Constant time = %llu\n", cycle);
+
+
+
+        cycle = rdtsc_fenced();
 
         hashmap_set(map, &(data){ .key=i, .buffer=number});
 

@@ -215,16 +215,16 @@ void test_syscall(void) {
 
     printk("[TEST_FUNC]: Testing\n");
 
-    printk("\n\n[TEST_FUNC]: Bitmask Testing\n");
+    printk("[TEST_FUNC]: Bitmask Testing\n");
 
     if(test_bitmask() == -1) printk("Error in bitmask testing\n");
 
 
-    printk("\n\n[TEST_FUNC]: Hashmap Testing\n");
+    printk("[TEST_FUNC]: Hashmap Testing\n");
 
     if(test_hashmap() == -1) printk("Error in hashmap testing\n");
 
-    printk("\n\n[TEST_FUNC]: All test executed correctly!\n");
+    printk("[TEST_FUNC]: All test executed correctly!\n");
 
 }
 

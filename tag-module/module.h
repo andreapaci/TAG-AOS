@@ -9,6 +9,7 @@
 #include <linux/mutex.h>
 #include <linux/mm.h>
 #include <linux/sched.h>
+#include <linux/wait.h>
 #include <linux/slab.h>
 #include <linux/version.h>
 #include <linux/interrupt.h>
@@ -20,6 +21,11 @@
 #include <asm/apic.h>
 #include <linux/syscalls.h>
 #include <linux/gfp.h>
+#include <linux/init.h>
+#include <linux/workqueue.h>
+#include <linux/delay.h>
+#include <linux/rwsem.h>
+
 
 #include "../syscall-table-disc/include/syscall-handle.h"
 #include "../utils/include/bitmask.h"
@@ -37,8 +43,9 @@
 
 #define MODNAME "TAG-MOD"
 
-extern hashmap_t*   tag_table;
-extern bitmask_t*   tag_bitmask;
-extern tag_t*       tag;
+extern hashmap_t*           tag_table;
+extern bitmask_t*           tag_bitmask;
+extern tag_t**              tags;
+extern struct rw_semaphore  common_lock;  
 
 int install_syscalls(void);

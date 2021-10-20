@@ -11,7 +11,7 @@
 #ifdef TEST_FUNC
 static __always_inline void *alloc(size_t size) { return calloc(size / sizeof(unsigned long long), sizeof(unsigned long long)); }
 #else
-static __always_inline void *alloc(size_t size) { return kzalloc(size, GFP_ATOMIC); }
+static __always_inline void *alloc(size_t size) { return kzalloc(size, GFP_KERNEL); }
 #endif
 
 #ifdef TEST_FUNC
@@ -25,7 +25,7 @@ static __always_inline void dealloc(void* obj) { kfree(obj); }
 #define SET_BIT(mask, pos)     ((*mask) |=  (1ULL << pos))
 #define CLEAR_BIT(mask, pos)   ((*mask) &= ~(1ULL << pos))
 
-static inline int get_free_bit(unsigned long long mask, int bits_per_slot);
+static __always_inline int get_free_bit(unsigned long long mask, int bits_per_slot);
 
 bitmask_t* initialize_bitmask(int number_bits) {
 
@@ -106,7 +106,7 @@ int clear_number(bitmask_t* bitmask, int number){
 }
 
 
-static inline int get_free_bit(unsigned long long mask, int bits_per_slot) {
+static __always_inline int get_free_bit(unsigned long long mask, int bits_per_slot) {
     int bit;
     for(bit = 0; bit < bits_per_slot; bit++) {
         if(CHECK_BIT(mask, bit) == 0) return bit;

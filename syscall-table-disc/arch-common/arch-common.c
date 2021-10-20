@@ -17,7 +17,7 @@ unsigned long __force_order;
  *  @return physical address of Page Table (PML4 in x86-64 Long Mode)  
  * 
  */
-inline unsigned long long get_pt_addr(void) {
+unsigned long long get_pt_addr(void) {
     unsigned long long addr;
     asm volatile("mov %%cr3,%0":  "=r" (addr) : );
     return addr & PT_CR3_MASK;
@@ -31,7 +31,7 @@ inline unsigned long long get_pt_addr(void) {
  *  @param  flags for IRQ State save
  * 
  */
-inline void disable_WP(unsigned long* flags, unsigned long cr0) {
+void disable_WP(unsigned long* flags, unsigned long cr0) {
     
     local_irq_save(*flags);
     preempt_disable();
@@ -52,7 +52,7 @@ inline void disable_WP(unsigned long* flags, unsigned long cr0) {
  *  @param  flags for IRQ State save
  * 
  */
-inline void enable_WP(unsigned long* flags, unsigned long cr0) {
+void enable_WP(unsigned long* flags, unsigned long cr0) {
     
     PRINT
     printk("%s: Enabling Write Protection Bit in CR0", MODNAME);

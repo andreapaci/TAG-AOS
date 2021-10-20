@@ -1,3 +1,5 @@
+#include <linux/rwsem.h>
+
 #define SEED0 401861
 #define SEED1 879023
 #define HASHMAP_CAP 256
@@ -8,6 +10,9 @@
 
 #define TAG_OPEN    0
 #define TAG_CREAT   1
+
+#define TAG_AWAKE_ALL   0
+#define TAG_DELETE      1
 
 // Error code used to comunicate that the max number of tag services has been reached
 #define EMAXTAG     132
@@ -21,15 +26,22 @@ typedef struct tag_table_entry_struct {
 
 typedef struct tag_level_struct {
     int level;
-    int waiting;
     char* buffer;
+    int ready;
+    struct rw_semaphore level_lock;
+    atomic_t waiting;
+    wait_queue_head_t local_wq;
+    
 } tag_level_t;
 
 typedef struct tag_struct {
+    int key;
     int tag_key;
     int permission;
-    int pid;
-    tag_level_t* tag_level;
+    int ready;
+    struct rw_semaphore tag_lock;
+    atomic_t waiting;
+    tag_level_t** tag_level;
 } tag_t;
 
 
@@ -37,13 +49,6 @@ typedef struct tag_struct {
 #ifndef TAG_STRUCT_H
 #define TAG_STRUCT_H
 
-int tag_compare(const void* a, const void* b, void* udata) {
-    return ((tag_table_entry_t *) a) -> key - ((tag_table_entry_t *) b) -> key;
-}
 
-uint64_t tag_hash(const void *item, uint64_t seed0, uint64_t seed1 ) {
-    const tag_table_entry_t* entry = item;
-    return hashmap_sip( &(entry -> key), sizeof(int), seed0, seed1);
-}
 
 #endif

@@ -1,5 +1,8 @@
 //inline unsigned long long rdtsc_fenced(void);
-unsigned long long rdtsc_fenced(void);
+
+
+unsigned long long rdtsc_fenced(void) __attribute__((always_inline));
+
 unsigned long long rdtsc_fenced(void) {
     unsigned long long low, high;
     
