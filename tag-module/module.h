@@ -46,6 +46,8 @@
 extern hashmap_t*           tag_table;
 extern bitmask_t*           tag_bitmask;
 extern tag_t**              tags;
-extern struct rw_semaphore  common_lock;  
+extern struct rw_semaphore  common_lock;
+extern struct rw_semaphore  tag_lock[MAX_TAGS];
+
 
 int install_syscalls(void);

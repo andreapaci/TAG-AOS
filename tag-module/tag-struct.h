@@ -27,8 +27,10 @@ typedef struct tag_table_entry_struct {
 typedef struct tag_level_struct {
     int level;
     char* buffer;
+    size_t size;
     int ready;
-    struct rw_semaphore level_lock;
+    int epoch;
+    struct rw_semaphore rcu_lock;
     atomic_t waiting;
     wait_queue_head_t local_wq;
     
@@ -39,7 +41,7 @@ typedef struct tag_struct {
     int tag_key;
     int permission;
     int ready;
-    struct rw_semaphore tag_lock;
+    struct rw_semaphore level_lock[LEVELS]; // Maybe this one can be converted to a plain mutex instead of a RW Semaphore
     atomic_t waiting;
     tag_level_t** tag_level;
 } tag_t;

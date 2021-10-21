@@ -15,7 +15,8 @@ MODULE_DESCRIPTION("TAG-based message exchange");
 hashmap_t*           tag_table;
 bitmask_t*           tag_bitmask;
 tag_t**              tags;
-struct rw_semaphore  common_lock; 
+struct rw_semaphore  common_lock;
+struct rw_semaphore  tag_lock[MAX_TAGS]; 
 
 static int initialize(void);
 
@@ -111,6 +112,11 @@ static int initialize(void) {
     }
 
     init_rwsem(&common_lock);
+
+    int i;
+    for(i = 0; i < MAX_TAGS; i++)
+        init_rwsem(&(tag_lock[i]));
+    
 
     PRINT
     printk("%s: Struct initialized.\n", MODNAME);

@@ -64,7 +64,7 @@ else
 
         # Compile and run TAG module tester
         make test_tag_sys
-        ./test_tag.o
+        taskset --cpu-list 1 ./test_tag.o
     fi
 
 fi

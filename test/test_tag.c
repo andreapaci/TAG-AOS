@@ -34,7 +34,7 @@ int main(int argc, char** argv) {
     printf("Main thread PID: %d\n", getpid());
     printf("Main thread TID: %d\n", gettid());
 
-    //create_del_test();
+    create_del_test();
     
     pthread_join(tid, 0);
 
