@@ -24,7 +24,6 @@
 #include <linux/init.h>
 #include <linux/workqueue.h>
 #include <linux/delay.h>
-#include <linux/rwsem.h>
 
 
 #include "../syscall-table-disc/include/syscall-handle.h"

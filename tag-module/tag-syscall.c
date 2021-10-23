@@ -9,37 +9,68 @@
 
 static int  add_tag_level(tag_level_t** tag_level);
 static tag_level_t* create_level(int i, int epoch);
-static void clear_tag(tag_t* tag_entry);
+static int clear_tag_common(int key, int tag_key);
 static void clear_tag_level(tag_level_t** tag_level);
 __always_inline static void free_level(tag_level_t* tag_level);
 static void print_tag(void);
+static void print_level(tag_level_t* tag_level, int tag);
 
-
+/**
+ *  @brief  Create or open a new Tag
+ *  
+ *  @param  key used for identify the Tag
+ *  @param  command used to determine if is a "open" or a "create"
+ *  @param  permission to enable the tag to be used by all threads 
+ *          or only by the one of the same user who created the TAG
+ * 
+ *  @return Tag descriptor value used to reference the Tag or ERNO code to signal error
+ */
 int tag_get(int key, int command, int permission) {
 
     PRINT {
         
         char* command_str;
-        if(command == TAG_OPEN) command_str = "TAG_OPEN";
-        else if(command == TAG_CREAT) command_str = "TAG_CREAT";
-        else command_str = "UNDEFINED";
+        char* perm_str;
+        
+        if(command == TAG_OPEN)         command_str = "TAG_OPEN";
+        else if(command == TAG_CREAT)   command_str = "TAG_CREAT";
+        else                            command_str = "UNDEFINED";
 
-        printk("%s: TAG_GET has been called with key %d and command %s\n", MODNAME, key, command_str);
+        if(permission == TAG_PERM_USR)      perm_str = "TAG_PERM_USR";
+        else if(permission == TAG_PERM_ALL) perm_str = "TAG_PERM_ALL";
+        else                                perm_str = "UNDEFINED";
 
+        printk("%s: TAG_GET called. TID: %d, key %d, command %s, perm: %s\n", 
+            MODNAME, current->pid, key, command_str, perm_str);
     }
     
-    // Impostare un try_lock che se fallisce (con stessa chiave) allora vuol dire che qualcun altro sta già creando lo stesso servizio (che si fa?)
-    //Serializza l'operazioni su dati comuni come la bitmask
+    
     if(key < 0) {
         PRINT
         printk("%s: Key is invalid (< 0)\n", MODNAME);
         return -EINVAL; 
     }
 
-    // Creating new Tag Service
+
+    // Create new Tag service
     if(command == TAG_CREAT) {
+
+        // Check correct usage of the permission parameter
+        if(permission != TAG_PERM_USR || permission != TAG_PERM_ALL) {
+            PRINT
+            printk("%s: Permission invalid.\n", MODNAME);
+            return -EINVAL;
+        }
         
+        // Access common lock in write mode. This is necessary because common data structure will be accessed
+        //  - Hashamp (containing the mapping [key -> tag descriptor])
+        //  - Bitmask (for retriving the first free tag descriptor value)
+        // Those structs are not safe to use, in particular the Hashmap because of the bucket resizing (memory allocation/deallocation)
+        // The bitmask could theoretically be accessed in concurrency using the "atmomic" operation on bits, but since the only access to it
+        // is next to the one made for the hashmap (even for deleting a tag), there's no real performance boost in enabling concurrent
+        // access (also considering the access to the bitmask is fast enough)
         if(unlikely(down_write_killable(&common_lock) == -EINTR)) {
+            PRINT
             printk("%s: RW Lock was interrupted.\n", MODNAME);
             return -EINTR;
         }
@@ -47,62 +78,50 @@ int tag_get(int key, int command, int permission) {
         // Check if more Tag services can be created 
         if(hashmap_count(tag_table) >= MAX_TAGS) {
             PRINT
-            printk("%s: Maximum Tag services reached (%s)\n", MODNAME, MAX_TAGS);
-            
+            printk("%s: Maximum Tag services reached (%d)\n", MODNAME, MAX_TAGS);
             up_write(&common_lock);
-            
             return -EMAXTAG;
         }
 
-        // Get available tag number
+        // Get available Tag descriptor number
         int tag_key; 
-        
         tag_key = get_avail_number(tag_bitmask);
-        if(tag_key < 0) {
+        if(unlikely(tag_key < 0)) {
             PRINT
-            printk("%s: No tag_key avaliable\n", MODNAME);
+            printk("%s: Critical error! No tag_key avaliable\n", MODNAME);
             up_write(&common_lock);
             return -EPROTO;
         }
 
-        //if key IPC_PRIVATE no need to add it to the tag_table hashmap 
-        // (it will never be necessary to get key - tag descriptor mapping)
+        // If key IPC_PRIVATE no need to add it to the tag_table hashmap 
+        // (it will never be necessary to get key -> tag descriptor mapping)
         if(key != IPC_PRIVATE) {
             
             // Check if a Tag with the same key is already existing
             if(hashmap_get(tag_table, &(tag_table_entry_t){ .key = key}) != 0) {
                 PRINT
                 printk("%s: Tag with key %d already existing.\n", MODNAME, key);
-                
-                //c9lear_tag(tag_key, 0, 0);
                 if(clear_number(tag_bitmask, tag_key) != 1) 
-                    printk("%s: Could not clear %d from bitmask.\n", MODNAME, tag_key);
-
+                    PRINT
+                    printk("%s: Critical error! Could not clear %d from bitmask.\n", MODNAME, tag_key);
                 up_write(&common_lock);
-            
                 return -EBUSY;
             }
-
             
-            // Add new entry to the hashmap          
+            // Add new entry to the Hashmap          
             if(unlikely(
                 hashmap_set(tag_table, &(tag_table_entry_t){ .key = key, .tag_key = tag_key}) == 0 && 
-                hashmap_oom(tag_table)
-                )) {
+                hashmap_oom(tag_table))) { //Translated in: if it fails to allocate data for the Hashamp entry
                 
                 PRINT
                 printk("%s: Could not allocate hash struct entry.\n", MODNAME);
-                
-                //c9lear_tag(tag_key, 0, 0);
-                if(clear_number(tag_bitmask, tag_key) != 1) 
-                    printk("%s: Could not clear %d from bitmask.\n", MODNAME, tag_key);
-
+                if(clear_number(tag_bitmask, tag_key) != 1)
+                    PRINT
+                    printk("%s: Critical error! Could not clear %d from bitmask.\n", MODNAME, tag_key);
                 up_write(&common_lock);
-            
                 return -ENOMEM;
             }
 
-            
         }
 
         // No write on common struct needed for now, the subsequent code will only allocate struct used to represent
@@ -110,121 +129,53 @@ int tag_get(int key, int command, int permission) {
         up_write(&common_lock);
 
 
-        // Alloc TAG service buffer        
+        // Alloc TAG Levels buffer        
         tag_level_t** tag_level;
         tag_level = kzalloc(sizeof(tag_level_t*) * LEVELS, GFP_KERNEL);
         if(unlikely(tag_level == 0)) {
             PRINT
             printk("%s: Could not allocate memory for Tag Service levels array.\n", MODNAME);
-            
-            if(unlikely(down_write_killable(&common_lock) == -EINTR)) {
-                printk("%s: RW Lock was interrupted.\n", MODNAME);
-                return -EINTR;
-            }
-            
-            // If the key is IPC_PRIVATE, there will not be an entry in the hashmap
-            if(key != IPC_PRIVATE) {
-                tag_table_entry_t* entry;
-                entry = hashmap_get(tag_table, &(tag_table_entry_t){ .key = key});
-                
-                //Extra check which should not be necessary, but just to be safe
-                if(entry != 0 && entry -> tag_key == tag_key)    
-                    hashmap_delete(tag_table, &(tag_table_entry_t){ .key = key});
-            }
-
-            //c9lear_tag(tag_key, 0, 0);
-            if(clear_number(tag_bitmask, tag_key) != 1) 
-                printk("%s: Could not clear %d from bitmask.\n", MODNAME, tag_key);
-            
-            
-            up_write(&common_lock);
-            
+            if(unlikely(clear_tag_common(key, tag_key) != 0)) return -EINTR;
             return -ENOMEM;
         }
         
         
+        // Allocate and add all levels to tag_level
         if(add_tag_level(tag_level) != 0) {
-            
             PRINT
             printk("%s: Could not allocate memory for Tag Service single levels.\n", MODNAME);
             
-            
+            // Free the level that have been allocated
             clear_tag_level(tag_level);
-
-            //c9lear_tag(tag_key, tag_level, 0);
             kfree(tag_level);
-
-            if(unlikely(down_write_killable(&common_lock) == -EINTR)) {
-                printk("%s: RW Lock was interrupted.\n", MODNAME);
-                return -EINTR;
-            }
-
-            
-            // If the key is IPC_PRIVATE, there will not be an entry in the hashmap
-            if(key != IPC_PRIVATE) {
-                tag_table_entry_t* entry;
-                entry = hashmap_get(tag_table, &(tag_table_entry_t){ .key = key});
-                
-                //Extra check which should not be necessary, but just to be safe
-                if(entry != 0 && entry -> tag_key == tag_key)    
-                    hashmap_delete(tag_table, &(tag_table_entry_t){ .key = key});
-            }
-
-            if(clear_number(tag_bitmask, tag_key) != 1) 
-                printk("%s: Could not clear %d from bitmask.\n", MODNAME, tag_key);
-
-
-            up_write(&common_lock);
-
+            if(unlikely(clear_tag_common(key, tag_key) != 0)) return -EINTR;
             return -ENOMEM;
         }
 
-        tag_t* tag_entry = kzalloc(sizeof(tag_t), GFP_ATOMIC);
+        tag_t* tag_entry;
+        tag_entry = kzalloc(sizeof(tag_t), GFP_KERNEL);
         if(unlikely(tag_entry == 0)) {
             PRINT
             printk("%s: Could not allocate memory for Tag Service entry.\n", MODNAME);
 
-            kfree(tag_entry);
-            
+            // Free the level that have been allocated
             clear_tag_level(tag_level);
-
-            //c9lear_tag(tag_key, tag_level, 0);
             kfree(tag_level);
-
-            if(unlikely(down_write_killable(&common_lock) == -EINTR)) {
-                printk("%s: RW Lock was interrupted.\n", MODNAME);
-                return -EINTR;
-            }
-
-            
-            // If the key is IPC_PRIVATE, there will not be an entry in the hashmap
-            if(key != IPC_PRIVATE) {
-                tag_table_entry_t* entry;
-                entry = hashmap_get(tag_table, &(tag_table_entry_t){ .key = key});
-                
-                //Extra check which should not be necessary, but just to be safe
-                if(entry != 0 && entry -> tag_key == tag_key)    
-                    hashmap_delete(tag_table, &(tag_table_entry_t){ .key = key});
-            }
-
-            if(clear_number(tag_bitmask, tag_key) != 1) 
-                printk("%s: Could not clear %d from bitmask.\n", MODNAME, tag_key);
-
-
-            up_write(&common_lock);
-
+            if(unlikely(clear_tag_common(key, tag_key) != 0)) return -EINTR;
             return -ENOMEM;
         }
 
         int i;
-        tag_entry -> key = key;
-        tag_entry -> tag_key = tag_key;
-        tag_entry -> permission = permission;
-        tag_entry -> ready = 0;
-        for(i = 0; i < LEVELS; i++) init_rwsem(&(tag_entry -> level_lock[i]));
-        atomic_set(&(tag_entry -> waiting), 0);
-        tag_entry -> tag_level = tag_level;
         
+        // Initalize values for tag entry
+        tag_entry -> key        = key;
+        tag_entry -> tag_key    = tag_key;
+        tag_entry -> ready      = 0;
+        tag_entry -> permission = permission;
+        tag_entry -> euid       = current_euid().val;
+        tag_entry -> tag_level  = tag_level;
+        atomic_set(&(tag_entry -> waiting), 0);
+        for(i = 0; i < LEVELS; i++) init_rwsem(&(tag_entry -> level_lock[i]));
         
         // It's not necessary to lock this access because of the locking mechanism before:
         //      it's not possible to use an already taken tag descriptor (tag_key)
@@ -251,12 +202,12 @@ int tag_get(int key, int command, int permission) {
         int tag_key;
 
         if(unlikely(down_read_interruptible(&common_lock) == -EINTR)) {
+            PRINT
             printk("%s: RW Lock was interrupted.\n", MODNAME);
             return -EINTR;
         }
 
         entry = hashmap_get(tag_table, &(tag_table_entry_t){ .key = key});
-        
         if(entry == 0) {
             PRINT
             printk("%s: Tag with key %d does not exist.\n", MODNAME, key);
@@ -265,23 +216,19 @@ int tag_get(int key, int command, int permission) {
         }
 
         tag_key = entry -> tag_key;
-
-        if(tags[tag_key] == 0){
+        if(unlikely(tags[tag_key] == 0)) {
             PRINT
             printk("%s: Tag with tag descriptor %d is being deleted or is not yet fully initialized.\n", MODNAME, tag_key);
             up_read(&common_lock);
             return -ENODATA;
         }
 
-        up_read(&common_lock);
-        
-        
+        up_read(&common_lock); 
 
         PRINT
         print_tag();
 
         return tag_key;
-        
     }
     
 
@@ -291,23 +238,41 @@ int tag_get(int key, int command, int permission) {
 }
 
 
-//NOTA--------------------------
-//Inoltre, ricordati che quanti si fa tag_send e recv, fare un controllo preventivo se il buffer esiste
-//inoltre, allo smontaggio, elimina tutte le entry
-//Fai le FREE
 
 
 
-// Questo sistema strano di lockare le cose (prima common e poi tag_lock) è fatto per evitare che che venga eliminato il tag mentre si
-// sta cercando di accederci, risultando in errori di accesso in memoria illecito
+
+
+
+/**
+ *  @brief  Send message to a Tag
+ *  
+ *  @param  tag Tag descriptor of the Tag
+ *  @param  level of the Tag send message to (0 to LEVELS - 1)
+ *  @param  buffer containing the message to deliver 
+ *  @param  size size of the message to deliver
+ * 
+ *  @return 1 on success, 0 on discarded message (no receiver waiting or occupied), negative error codes otherwise
+ */
 int tag_send(int tag, int level, char* buffer, size_t size) { 
 
 
     PRINT
-    printk("%s: Tag send has been called.\n", MODNAME);
+    printk("%s: TAG_SEND called. TID: %d, tag %d, level %d, buffer: %s, size: %d\n", MODNAME, current->pid, tag, level, buffer, size);
 
-    //FORSE QUESTO LOCK NON SERVE
-    if(unlikely(down_read_interruptible(&(tag_lock[tag])) == -EINTR)) {                
+    // Input check
+    if(tag < 0 || tag >= MAX_TAGS || level < 0 || level >= LEVELS || buffer == 0 || size < 0 || size > BUFFER_SIZE){
+        PRINT
+        prinkt("%s TAG_SEND: Wrong parameter usage\n", MODNAME);
+        return -EINVAL;
+    }
+
+
+
+
+    // Get lock to access the (used to avoid removal while accessing the TAG)
+    if(unlikely(down_read_interruptible(&(tag_lock[tag])) == -EINTR)) {  
+        PRINT              
         printk("%s: RW Lock was interrupted.\n", MODNAME);
         return -EINTR;
     }
@@ -319,21 +284,26 @@ int tag_send(int tag, int level, char* buffer, size_t size) {
         PRINT
         printk("%s: Tag %d is not created.\b", MODNAME, tag);
         up_read(&(tag_lock[tag]));
-        //Metti val ritrono corretto   
-        return -1;
+        return -ENODATA;
+    }
+
+    // Root can always access
+    if(tag_entry -> permission && current_euid().val != 0 && tag_entry -> euid != current_euid().val) {
+        PRINT
+        printk("%s: Could not access the Tag service %d: permission error\n", MODNAME, tag);
+        up_read(&(tag_lock[tag]));
+        return -EPERM;
     }
     
-    
-    //FAI LA STESSA STRUTTURA DEL SEND ANCHE SU AWAKE_ALL
     if(atomic_read(&(tag_entry -> waiting)) == 0) {
         PRINT
         printk("%s: Tag %d has no reader.\b", MODNAME, tag);
         up_read(&(tag_lock[tag]));
-        return -1;
+        return 0;
     }
 
-    //FORSE QUESTO LOCK NON SERVE
     if(unlikely(down_read_interruptible(&(tag_entry -> level_lock[level])) == -EINTR)) {                
+        PRINT
         printk("%s: RW Lock was interrupted.\n", MODNAME);
         up_read(&(tag_lock[tag]));
         return -EINTR;
@@ -342,14 +312,13 @@ int tag_send(int tag, int level, char* buffer, size_t size) {
     tag_level_t* tag_level;
     tag_level = (tag_entry -> tag_level)[level];
 
-    if(tag_level == 0) {
+    if(unlikely(tag_level == 0)) {
         PRINT
         printk("%s: Tag %d with level %d is not existing.\n", MODNAME, tag, level);
         up_read(&(tag_entry -> level_lock[level]));
         up_read(&(tag_lock[tag]));
         return -EINTR;
     }
-
 
 
     if(unlikely(down_read_interruptible(&(tag_level -> rcu_lock)) == -EINTR)) {                
@@ -362,13 +331,13 @@ int tag_send(int tag, int level, char* buffer, size_t size) {
     up_read(&(tag_entry -> level_lock[level]));
 
 
-    //Those next two if are separted to print distinguished info for the two cases
+    //Those next two "if" are separted to print distinguished info for the two cases
     if((tag_level -> ready) == 1) {
         PRINT
         printk("%s: Tag %d on level %d is occupied.\b", MODNAME, tag, level);
         up_read(&(tag_level -> rcu_lock));
         up_read(&(tag_lock[tag]));
-        return -1;
+        return 0;
     }
 
     if(atomic_read(&(tag_level -> waiting)) == 0) {
@@ -376,31 +345,74 @@ int tag_send(int tag, int level, char* buffer, size_t size) {
         printk("%s: Tag %d on level %d has no reader.\b", MODNAME, tag, level);
         up_read(&(tag_level -> rcu_lock));
         up_read(&(tag_lock[tag]));
-        return -1;
+        return 0;
     }
+
+    // Only if size is > 0 the copy goes on, otherwise, just wake up
+    if(size > 0) {
+        // Copy of the buffer
+        if(unlikely(copy_from_user(tag_level -> buffer, buffer, size) != 0)) {
+            PRINT
+            printk("%s: Error in copying message from userspace\n", MODNAME);
+            up_read(&(tag_level -> rcu_lock));
+            up_read(&(tag_lock[tag]));
+            return -EFAULT;
+        }
+    }
+
+    tag_level -> size = size;
+    asm volatile("mfence" ::: "memory");
+
+    PRINT
+    print_level(tag_level, tag);
 
     tag_level -> ready = 1;
     wake_up_all(&(tag_level -> local_wq));
 
-    
     up_read(&(tag_level -> rcu_lock));
     up_read(&(tag_lock[tag]));
 
-    printk("Send done: %d - %d\n", tag_level -> ready, atomic_read(&(tag_level -> waiting)));
-
-    //Aspettare che tutto ritorna come prima e risettare il livello al valore corretto, tra cui ready = 0
-
-    //CONTROLLI SUGLI INPUT (LEVEL >= 0, SIZE >= 0, ETC, SE IL TAG ESISTE)
+    PRINT
+    printk("%s: TAG_SEND done. TID: %d, tag %d, level %d\n", MODNAME, current->pid, tag, level);
     
     return 1;
 }
 
+
+
+
+
+
+
+
+
+/**
+ *  @brief  Receive message from a Tag
+ *  
+ *  @param  tag Tag descriptor of the Tag
+ *  @param  level of the Tag send message to (0 to LEVELS - 1)
+ *  @param  buffer memory position to store the message 
+ *  @param  size size of the buffer
+ * 
+ *  @return 1 on success, 0 if interrupted while waiting, negative error codes otherwise
+ */
 int tag_receive(int tag, int level, char* buffer, size_t size) { 
 
     PRINT
-    printk("%s: Tag receive has been called.\n", MODNAME);
+    printk("%s: TAG_RECEIVE called. TID: %d, tag %d, level %d, size: %d\n", MODNAME, current->pid, tag, level, size);
+
+    int return_code;
+
+    // Input check
+    if(tag < 0 || tag >= MAX_TAGS || level < 0 || level >= LEVELS || buffer == 0 || size < 0 || size > BUFFER_SIZE){
+        PRINT
+        prinkt("%s TAG_RECEIVE: Wrong parameter usage\n", MODNAME);
+        return -EINVAL;
+    }
+
 
     if(unlikely(down_read_interruptible(&(tag_lock[tag])) == -EINTR)) {                
+            PRINT
             printk("%s: RW Lock was interrupted.\n", MODNAME);
             return -EINTR;
     }
@@ -416,19 +428,17 @@ int tag_receive(int tag, int level, char* buffer, size_t size) {
         return -1;
     }
 
-    
-
-   /* // Se è attivo, spostati in un nuovo buffer e andiamo in un'altra epoca
-    if(tag_entry -> ready == 1) {
-        //if(add_tag_level(tag, level) != 0) {
-            up_write(&(tag_entry -> tag_lock));
-            up_read(&common_lock);
-            return -ENOMEM;
-       // }
-    }*/
+    // Root can always access
+    if(tag_entry -> permission && current_euid().val != 0 && tag_entry -> euid != current_euid().val) {
+        PRINT
+        printk("%s: Could not access the Tag service %d: permission error\n", MODNAME, tag);
+        up_read(&(tag_lock[tag]));
+        return -EPERM;
+    }
     
     // Fare check atomici se dobbiamo saltare di epoca oppure il livello non è ancora stato creato
     if(unlikely(down_read_interruptible(&(tag_entry -> level_lock[level])) == -EINTR)) {                
+        PRINT
         printk("%s: RW Lock was interrupted.\n", MODNAME);
         up_read(&(tag_lock[tag]));
         return -EINTR;
@@ -439,7 +449,7 @@ int tag_receive(int tag, int level, char* buffer, size_t size) {
     tag_level = (tag_entry -> tag_level)[level];
 
 
-    if(tag_level == 0) {
+    if(unlikely(tag_level == 0)) {
         PRINT
         printk("%s: Tag %d with level %d is not existing.\n", MODNAME, tag, level);
         up_read(&(tag_entry -> level_lock[level]));
@@ -447,14 +457,12 @@ int tag_receive(int tag, int level, char* buffer, size_t size) {
         return -EINVAL;
     }
 
-
     atomic_inc(&(tag_entry -> waiting));
 
     if(unlikely(down_read_interruptible(&(tag_level -> rcu_lock)) == -EINTR)) {                
+        PRINT
         printk("%s: RW Lock was interrupted.\n", MODNAME);
 
-        // OLTRE A QUESTO decrease è anche necessario, nell'eventualità che nel frangente tutti i receiver si sono liberati, di impostare tag_entry -> acrive = 0
-        // nella classica maniera atomica con test_and_set (per il ctl più che altro) per evitare che rimanga active per sempre  
         if(atomic_dec_and_test(&(tag_entry -> waiting))) 
             tag_entry -> ready = 0;
         up_read(&(tag_entry -> level_lock[level]));
@@ -464,23 +472,26 @@ int tag_receive(int tag, int level, char* buffer, size_t size) {
 
     up_read(&(tag_entry -> level_lock[level]));
     
-    //Important: if in this frame of time a new epoch level gets created (leving this thread with an old version) there's is no problem
+    // Important: if in this frame of time a new epoch level gets created (leving this thread with an old version) there's is no problem
     // since it will enter in the next if, and will get as tag_level the updated version (new epoch one)
-    
-        //------------------------PROBLEMA DELLA FREEEE_leveL
 
 
     // If the specified tag level has a send already, create a new epoch level and register on that one
     if(tag_level -> ready == 1) {
+
+        PRINT
+        prinkt("%s: Creating new Level Epoch (Tag: %d, Level: %d)\n", MODNAME, tag, level);
+
+        struct tag_level_t* old_level;
+        old_level = tag_level;
         
-        //Lock level structure
-        // Fare check atomici se dobbiamo saltare di epoca oppure il livello non è ancora stato creato
-        // NOOOO PRENDE UN WRITE DOPO CHE HA PRESO READ
+        // Lock level structure
+        // Lock has been taken here to avoid locking every time a receive occurs (since is not necessary), resulting
+        // in redoing the same check on "read == 1" in case two or more thread starts a receive while ready is set to one
         if(unlikely(down_write_killable(&(tag_entry -> level_lock[level])) == -EINTR)) {                
+            PRINT
             printk("%s: RW Lock was interrupted.\n", MODNAME);
             
-            // OLTRE A QUESTO decrease è anche necessario, nell'eventualità che nel frangente tutti i receiver si sono liberati, di impostare tag_entry -> acrive = 0
-            // nella classica maniera atomica con test_and_set (per il ctl più che altro) per evitare che rimanga active per sempre
             if(atomic_dec_and_test(&(tag_entry -> waiting))) 
                 tag_entry -> ready = 0;
             up_read(&(tag_level -> rcu_lock));
@@ -493,10 +504,12 @@ int tag_receive(int tag, int level, char* buffer, size_t size) {
         struct rw_semaphore* temp_sem;
         temp_sem = &(tag_level -> rcu_lock);
 
-        //In case multiple thread read the current level as "ready", they will both try to create new level and access it, 
+        // In case multiple thread read the current level as "ready", they will both try to create new level and access it, 
         // so let's re-do the check and re-access the level to see if the thread is the first one or the subsequent
         // Instead of this, it could have been done using a write_try_lock instead of a lock, and then a subsequent write_lock to syncronize 
         // (to wait for the thread that started the allocation of a new level)
+        // Every one accessing this specific level have to wait this routine to end (even in read) because the pointer to the level will
+        // be changed, and so need those thread need to see the correct version of it
         tag_level = (tag_entry -> tag_level)[level];
 
         if(unlikely(tag_level == 0)) {
@@ -504,8 +517,6 @@ int tag_receive(int tag, int level, char* buffer, size_t size) {
             printk("%s: Tag %d with level %d is not existing.\n", MODNAME, tag, level);
             
             up_write(&(tag_entry -> level_lock[level]));
-            // OLTRE A QUESTO decrease è anche necessario, nell'eventualità che nel frangente tutti i receiver si sono liberati, di impostare tag_entry -> acrive = 0
-            // nella classica maniera atomica con test_and_set (per il ctl più che altro) per evitare che rimanga active per sempre
             if(atomic_dec_and_test(&(tag_entry -> waiting))) 
                 tag_entry -> ready = 0;
             up_read(temp_sem);
@@ -520,12 +531,11 @@ int tag_receive(int tag, int level, char* buffer, size_t size) {
             tag_level_t *new_tag_level; 
             new_tag_level = create_level(level, tag_level -> epoch + 1);
             if(unlikely(new_tag_level == 0)) {
+                PRINT
                 printk("%s: Could not create new level for Tag %d at level %d (epoch: %d -> %d)\n", 
-                MODNAME, tag, level, tag_level -> epoch, tag_level -> epoch + 1);
+                        MODNAME, tag, level, tag_level -> epoch, tag_level -> epoch + 1);
                 
                 up_write(&(tag_entry -> level_lock[level]));
-                // OLTRE A QUESTO decrease è anche necessario, nell'eventualità che nel frangente tutti i receiver si sono liberati, di impostare tag_entry -> acrive = 0
-                // nella classica maniera atomica con test_and_set (per il ctl più che altro) per evitare che rimanga active per sempre
                 if(atomic_dec_and_test(&(tag_entry -> waiting))) 
                     tag_entry -> ready = 0;
                 up_read(temp_sem);
@@ -536,16 +546,19 @@ int tag_receive(int tag, int level, char* buffer, size_t size) {
 
             //Overwrite the corresponding entry with the new level address
             tag_entry -> tag_level[level] = new_tag_level;
-            //mfence
+            asm volatile ("mfence" ::: "memory");
+
+            tag_level = new_tag_level;
         }
 
-        //Instantly take the new tag level RCU lock
+        //Instantly take the new tag level RCU lock (Since the thread has moved to a next version of the level)
         if(unlikely(down_read_interruptible(&(tag_level -> rcu_lock)) == -EINTR)) {                
+            PRINT
             printk("%s: RW Lock was interrupted.\n", MODNAME);
             
+            tag_entry -> tag_level[level] = old_level;
+
             up_write(&(tag_entry -> level_lock[level]));
-            // OLTRE A QUESTO decrease è anche necessario, nell'eventualità che nel frangente tutti i receiver si sono liberati, di impostare tag_entry -> acrive = 0
-            // nella classica maniera atomica con test_and_set (per il ctl più che altro) per evitare che rimanga active per sempre
             if(atomic_dec_and_test(&(tag_entry -> waiting))) 
                 tag_entry -> ready = 0;
             up_read(temp_sem);
@@ -560,25 +573,39 @@ int tag_receive(int tag, int level, char* buffer, size_t size) {
         
     }
     
+   
+
     // Even if in this frame a new level gets allocated (in order arrives x receiver, a sender and a reciver which will create the new level)
     // there's no problem even if no sender will evere be able to awake this receive thread(not counting CTL):
-    //      when the thread does "wait_event", it will trigger a "might_sleep()", which will check the ready condition and will
-    //      immediately wake it up
-
-    //------------------------PROBLEMA DELLA FREEEE LEVEL
+    // when the thread does "wait_event", it will trigger a "might_sleep()", which will check the ready condition and will
+    // immediately wake it up
     
     atomic_inc(&(tag_level -> waiting));
     
 
-    printk("Pre_sleep %d - %d\n", tag_level -> ready, atomic_read(&(tag_level -> waiting)));
+    return_code = wait_event_interruptible(tag_level -> local_wq, tag_level -> ready || tag_entry -> ready);
     
-    wait_event_interruptible(tag_level -> local_wq, tag_level -> ready || tag_entry -> ready );
+    PRINT
+    print_level(tag_level, tag);
 
-    //CONTROLLI SUGLI INPUT (LEVEL >= 0, SIZE >= 0, ETC, CONTROLLARE SE IL TAG ESISTE)
+    // When return_code == 0 it means it has been woken up, otherwise it was an interrupt
+    if(return_code == 0) return_code = 1;
+    else return 0;
 
-    //-----------------------------
-    // buffer copy
-    //-----------------------------
+    // If the return code is 1 it means it has been woken up by a "wake_up" call, and if tag_level -> ready == 1 it means there's
+    // something to read in the buffer. Otherwise, the next steps are just skipped
+    if(return_code == 1 && tag_level -> ready) {
+        int current_size;
+        current_size = min(size, tag_level -> size);
+        // If current_size is 0, it won't copy anything, it will just wake up and go on
+        if(current_size > 0)
+            if(unlikely(copy_to_user(buffer, tag_level -> buffer, current_size)) != 0) {
+                PRINT
+                printk("%s: Could not copy the message to the User.\n", MODNAME);
+                return_code = -EFAULT; 
+            }
+    }
+
     up_read(&(tag_level -> rcu_lock));
 
 
@@ -586,9 +613,9 @@ int tag_receive(int tag, int level, char* buffer, size_t size) {
     if(atomic_dec_and_test(&(tag_level -> waiting))) {
 
         if(unlikely(down_write_killable(&(tag_level -> rcu_lock)) == -EINTR)) {                
+            PRINT
             printk("%s: RW Lock was interrupted.\n", MODNAME);   
-            // OLTRE A QUESTO decrease è anche necessario, nell'eventualità che nel frangente tutti i receiver si sono liberati, di impostare tag_entry -> acrive = 0
-            // nella classica maniera atomica con test_and_set (per il ctl più che altro) per evitare che rimanga active per sempre
+            
             if(atomic_dec_and_test(&(tag_entry -> waiting))) 
                 tag_entry -> ready = 0;
             up_read(&(tag_lock[tag]));
@@ -598,9 +625,9 @@ int tag_receive(int tag, int level, char* buffer, size_t size) {
         tag_level_t* new_tag_level;
         new_tag_level = (tag_entry -> tag_level)[level];
         if(unlikely(new_tag_level == 0)){
+            PRINT
             printk("%s: Fatal Error: Could not access new level for tag %d at level %d \n", MODNAME, tag, level);
-            // OLTRE A QUESTO decrease è anche necessario, nell'eventualità che nel frangente tutti i receiver si sono liberati, di impostare tag_entry -> acrive = 0
-            // nella classica maniera atomica con test_and_set (per il ctl più che altro) per evitare che rimanga active per sempre
+            
             if(atomic_dec_and_test(&(tag_entry -> waiting))) 
                 tag_entry -> ready = 0;
             up_write(&(tag_level -> rcu_lock));
@@ -609,55 +636,79 @@ int tag_receive(int tag, int level, char* buffer, size_t size) {
         }
 
         // If a next epoch exists it's possible to free the level
-        if(new_tag_level -> epoch > tag_level) {
-            //TESTA se "NO, sennò tutte le strutture se ne vanno a quel paese"
+        if(new_tag_level -> epoch > tag_level -> epoch) {
             up_write(&(tag_level -> rcu_lock));
             free_level(tag_level);
         
-        } else { //If a new tag level epoch doesn't exists set level_ready to 0 (the level is not used anymore)
+        } else { 
+            
+            //If a new tag level epoch doesn't exists set level_ready to 0 (the level is not used anymore)
             tag_level -> ready = 0;
+            
+            // Those two operation are not necessary since the next send will overwritre those value 
+            // (beside the buffer which should be set to 0 for consistency purposes)
+            // Should be removed to reduce the critical section. 
             tag_level -> size = 0;
-            //VEDI SE RESETTARE LA MEMORIA DEL BUFFER A 0 CON MEMSET 0
+            memset(tag_level -> buffer, 0, tag_level -> size);
+            asm volatile ("sfence" ::: "memory");
 
         }
 
         up_write(&(tag_level -> rcu_lock));
     }
-    // OLTRE A QUESTO decrease è anche necessario, nell'eventualità che nel frangente tutti i receiver si sono liberati, di impostare tag_entry -> acrive = 0
-    // nella classica maniera atomica con test_and_set (per il ctl più che altro) per evitare che rimanga active per sempre
+   
     if(atomic_dec_and_test(&(tag_entry -> waiting))) 
         tag_entry -> ready = 0;
     
-
-
-    printk("Post_sleep %d - %d\n", tag_level -> ready, atomic_read(&(tag_level -> waiting)));
-
     up_read(&(tag_lock[tag]));
 
+    PRINT
+    printk("%s: TAG_RECEIVE done. TID: %d, tag %d, level %d, buffer: %d, size: %d\n", MODNAME, current->pid, tag, level, buffer, size);
 
-    return 2;
+    return return_code;
 }
 
+
+
+
+
+
+
+
+
+/**
+ *  @brief  Signal a Tag
+ *  
+ *  @param  tag Tag descriptor of the Tag
+ *  @param  command to signal wether is a Delete or Awake All command
+ * 
+ *  @return 1 on success, 0 on discarded command (no receiver waiting or tag occupied), negative error codes otherwise
+ */
 int tag_ctl(int tag, int command) {
 
     PRINT {
-        
         char* command_str;
-        if(command == TAG_AWAKE_ALL) command_str = "TAG_AWAKE_ALL";
-        else if(command == TAG_DELETE) command_str = "TAG_DELETE";
-        else command_str = "UNDEFINED";
-        printk("%s: TAG_CTL has been called with tag key %d and command %s\n", MODNAME, tag, command_str);
+        if(command == TAG_AWAKE_ALL)    command_str = "TAG_AWAKE_ALL";
+        else if(command == TAG_DELETE)  command_str = "TAG_DELETE";
+        else                            command_str = "UNDEFINED";
+        printk("%s: TAG_CTL called. TID: %d, tag: %d, command %s\n", MODNAME, current -> pid, tag, command_str);
     }
  
+    // Input check
+    if(tag < 0 || tag >= MAX_TAGS){
+        PRINT
+        prinkt("%s TAG_CTL: Wrong parameter usage\n", MODNAME);
+        return -EINVAL;
+    }
 
     if(command == TAG_AWAKE_ALL) {
 
-        // VEDI SE QUESTO LOCK VA PRESO QUI
-        if(unlikely(down_read_interruptible(&(tag_lock[tag])) == -EINTR)) {                
+        // Acquire Tag Lock
+        if(unlikely(down_read_interruptible(&(tag_lock[tag])) == -EINTR)) {
+            PRINT                
             printk("%s: RW Lock was interrupted.\n", MODNAME);
             return -EINTR;
         }
-
 
         tag_t* tag_entry; 
         tag_entry = tags[tag];
@@ -669,28 +720,30 @@ int tag_ctl(int tag, int command) {
             return -ENODATA;
         }
 
+        // Root can always access
+        if(tag_entry -> permission && current_euid().val != 0 && tag_entry -> euid != current_euid().val) {
+            PRINT
+            printk("%s: Could not access the Tag service %d: permission error\n", MODNAME, tag);
+            up_read(&(tag_lock[tag]));
+            return -EPERM;
+        }
+
+        // Those next two if are separted to print distinguished info for the two cases
+        if((tag_entry -> ready) == 1) {
+            PRINT
+            printk("%s: Tag %d is already making an Awake All.\b", MODNAME, tag);
+            up_read(&(tag_lock[tag]));
+            return 0;
+        }
+
         if(atomic_read(&(tag_entry -> waiting)) == 0) {
             PRINT
             printk("%s: CTL AWAKE_ALL was called on tag %d but no receiver found\n", MODNAME, tag);
             up_read(&(tag_lock[tag]));
-            return 12;
+            return 0;
         }
 
-
         
-
-
-        
-
-        //NO ONE RESETS THE READY BIT TO 0
-        // Cosa succede se per esempio su tutti i livelli viene fatta una send e tutti i livelli hanno un receiver?
-        // Ogni reader dovrà scegliere di impostare un bit a 0, se quello di tag.ready o tag_level.ready
-        // Soluzione:: se tag.waiting = 0, ready viene impostato a 0 a prescindere se ci si è svegliati per una send
-        // op per un awake all (idea da pensare e testare)
-        // FAI TEST_SET SU WAITING SIA DI LIVELLO CHE DI TAG, E QUANDO SONO 0, IMPOSTALI A 0 
-        //  (CHIARAMENTE CONTROLLI SEPARATI, UNO PER LEVEL E UNO PER TAG)
-        // INOLTRE, NON E' UN PROBLEMA DI CONCORRENZA, PERCHE CTL E SEND DEVONO VERIFICARE CHE CI STANNO DEI RICEVENTI PRIMA DI FARE READY = 1
-        // QUINDI NON CI SARA MAI UNA SITUAZIONE DOVE VIENE IMPOSTATO A 0 MA E' PARTITO UN SEND/CTL CORRETTO
         tag_entry -> ready = 1;
 
         tag_level_t* tag_level;
@@ -699,15 +752,29 @@ int tag_ctl(int tag, int command) {
         for(i = 0; i < LEVELS; i++) {
 
             if(unlikely(down_read_interruptible(&(tag_entry -> level_lock[i])) == -EINTR)) {                
+                PRINT
                 printk("%s: RW Lock was interrupted.\n", MODNAME);
                 up_read(&(tag_lock[tag]));
                 return -EINTR;
             }
 
-            tag_level = tag_entry -> tag_level[i];
-            if(tag_level != 0)
+            tag_level = (tag_entry -> tag_level)[i];
+
+            if(likely(tag_level != 0)) {
+                
+                if(unlikely(down_read_interruptible(&(tag_level -> rcu_lock)) == -EINTR)) {                
+                    PRINT
+                    printk("%s: RW Lock was interrupted.\n", MODNAME);
+                    up_read(&(tag_entry -> level_lock[i]));
+                    up_read(&(tag_lock[tag]));
+                    return -EINTR;
+                }
+
                 if(atomic_read(&(tag_level -> waiting)) > 0)    
                     wake_up_all(&(tag_level -> local_wq));
+
+                up_read(&(tag_level -> rcu_lock)); 
+            }
 
             up_read(&(tag_entry -> level_lock[i]));
                 
@@ -716,29 +783,54 @@ int tag_ctl(int tag, int command) {
         up_read(&(tag_lock[tag]));
 
 
+        PRINT
+        printk("%s: CTL AWAKE_ALL done succesfully on tag %d\n", MODNAME, tag);
+
+
+        return 1;
+
+
     } else if(command == TAG_DELETE) {
         
-        
-
-        // VEDI SE QUESTO LOCK VA PRESO QUI
+       
         // Even if the common data structures get (for the moment) only accessed in read, the write lock
         // is necessary to ensure single access in concurrent enviroment so it's not possible to have 2 thread
         // trying to delete the same tag
+        /*
         if(unlikely(down_write_killable(&(tag_lock[tag])) == -EINTR)) {                
+            PRINT
             printk("%s: RW Lock was interrupted.\n", MODNAME);
-                
             return -EINTR;
+        }
+        */
+
+       // Since TAG_CTL is not requested to be a blocking service, it has been used a trylock which will succed only
+       // if no one is using the specific tag
+       // For the blocking variant just comment the trylock and uncomment the down_write_killable above
+        if(!down_write_trylock(&(tag_lock[tag]))) {
+           PRINT
+           printk("%s: Could not delete tag %d, occupied\n", MODNAME, tag);
+           return 0;
         }
 
         //Taking the common_lock in write will assure that no thread is accessing the common data structures
         // (ie no thread is trying to add/get/delete any tag and no thread is starting a tag_send or tag_rcv)
         tag_t* tag_entry; 
         tag_entry = tags[tag];
+
         if(tag_entry == 0) {
             PRINT
             printk("%s: CTL with tag descriptor: %d is not existing.\n", MODNAME, tag);
             up_write(&(tag_lock[tag]));
             return -ENODATA;
+        }
+
+        // Root can always access
+        if(tag_entry -> permission && current_euid().val != 0 && tag_entry -> euid != current_euid().val) {
+            PRINT
+            printk("%s: Could not access the Tag service %d: permission error\n", MODNAME, tag);
+            up_write(&(tag_lock[tag]));
+            return -EPERM;
         }
 
         // With this instruction the tag becomes unaccesible for other thread beside the one that are still making
@@ -748,45 +840,28 @@ int tag_ctl(int tag, int command) {
 
         up_write(&(tag_lock[tag]));
 
-        // Wait for other threasd to finish the transaction on this tag
-        // Probably this lock is unnecessary since every transaction is made by an escalation of lock acquire, so the acquire of
-        // common_lock as writer should be enough, but still added for increased security
-        /*if(unlikely(down_write_killable(&(tag_entry -> tag_lock)) == -EINTR)) {                
-            printk("%s: RW Lock was interrupted.\n", MODNAME);
-            tags[tag] = tag_entry;
-            return -EINTR;
-        }*/
+        
 
-        //check if someone is receiving (add counter to both levels and global)
-        if(atomic_read(&(tag_entry -> waiting)) != 0) {  //PROBABILMENTE SUPERFLUO
+        // Check if someone is receiving (should be a useless check since we locked before, but still let's be sure)
+        if(atomic_read(&(tag_entry -> waiting)) != 0) { 
             PRINT
-            printk("%s: CTL DELETE was called on tag %d but still pending operation are present.\n", MODNAME, tag);
+            printk("%s: Critical Error! CTL DELETE was called on tag %d but still pending operation are present.\n", MODNAME, tag);
             tags[tag] = tag_entry;
-            //up_write(&(tag_entry -> tag_lock));
-            return 12;
+            return -EPROTO;
         } 
 
         //From this point, no one is referncing this tag, so it can be safely deleted
         
-        // We can now release the lock since no thread can reach the tag, so it's possible to safely delete
-        
-        //up_write(&(tag_entry -> tag_lock));
+       
 
-        
-
-
-        // Lock to modify common access structures
-        if(unlikely(down_write_killable(&common_lock) == -EINTR)) {                
-            printk("%s: RW Lock was interrupted.\n", MODNAME);
+        // clear_tag_common() is done here instead than above where tags[tag] is set to 0 to be able to restore the situation in case
+        // any of the above instruction fails (there's no way)
+        if(unlikely(clear_tag_common(tag_entry -> key, tag_entry -> tag_key) != 0)) {
+            PRINT
+            printk("%s: Could not deallocate BM and HM for Tag %d.\n", MODNAME, tag_entry -> tag_key);
             tags[tag] = tag_entry;
             return -EINTR;
         }
-
-        // clear_tag() is done here instead than above where tags[tag] is set to 0 to be able to restore the situation in case
-        // any of the above instruction fails (there's no way)
-        clear_tag(tag_entry);
-
-        up_write(&common_lock);
 
         // Delete all leveles
         clear_tag_level(tag_entry -> tag_level);
@@ -795,7 +870,7 @@ int tag_ctl(int tag, int command) {
 
         if(tag_entry != 0) kfree(tag_entry);
 
-
+        PRINT
         printk("%s: CTL DELETE removed succesfully tag %d\n", MODNAME, tag);
 
 
@@ -803,11 +878,13 @@ int tag_ctl(int tag, int command) {
         PRINT
         print_tag();
 
+        return 1;
     }
 
-    // INSERISCI WRONG COMMAND USAGE con return errorcode EINVAL o simili
+    PRINT
+    printk("%s: Command is invalid\n", MODNAME);
+    return -EINVAL; 
 
-    return 3;
 }
 
 
@@ -816,26 +893,23 @@ int tag_ctl(int tag, int command) {
 
 
 
-
-
-// Utility and common functions
-
-
-
-
-
-
-
-
+/**
+ *  @brief  Allocate "LEVELS" levels and make tag_level reference them as
+ *          a list of pointer to their memory position
+ *  
+ *  @param  tag_level variable used for storing the pointer to the new allocated levels
+ *  
+ *  @return -ENOMEM for failure in memory allocations, 0 for success 
+ */
 static int add_tag_level(tag_level_t** tag_level) {
 
+    tag_level_t* level;
     int i;
+
     for(i = 0; i < LEVELS; i++) {
     
-        tag_level_t* level;
         level = create_level(i, 0);
-
-        if(level == 0) return -1;
+        if(unlikely(level == 0)) return -ENOMEM;
         
         tag_level[i] = level;        
     }
@@ -843,31 +917,39 @@ static int add_tag_level(tag_level_t** tag_level) {
     return 0;
 }
 
+/**
+ *  @brief  Allocate and return a new Tag Level at a specific level on a specif epoch
+ *  
+ *  @param  i as the level of the new Tag Level
+ *  @param  epoch of the Tag Level
+ *        
+ *  @return -ENOMEM for failure in memory allocations, 0 for success 
+ */
 static tag_level_t* create_level(int i, int epoch) {
 
     tag_level_t* level;
+    char* buffer;
+
     level = kzalloc(sizeof(tag_level_t), GFP_KERNEL);
-    if(level == 0) {
+    if(unlikely(level == 0)) {
         PRINT
         printk("%s: Could not allocate memory level %d.\n", MODNAME, i);
-        //Unlock
-        return 0;
+        return -ENOMEM;
     } 
 
-    char* buffer;
     buffer = kzalloc(sizeof(char) * BUFFER_SIZE, GFP_KERNEL);
-    if(buffer == 0){
+    if(unlikely(buffer == 0)) {
         PRINT
+        printk("%s: Could not allocate buffer for level %d\n", MODNAME, i);
         kfree(level);
-        printk("%s: Could not allocatore buffer for level %d\n", MODNAME, i);
-        //Unlock
-        return 0;
+        return -ENOMEM;
     }
     
-    level -> level = i;
-    level -> ready = 0;
+    level -> level  = i;
     level -> buffer = buffer;
-    level -> epoch = epoch;
+    level -> size   = 0;
+    level -> ready  = 0;
+    level -> epoch  = epoch;
     atomic_set(&(level -> waiting), 0);
     init_waitqueue_head(&(level -> local_wq));
     init_rwsem(&(level -> rcu_lock));
@@ -877,31 +959,55 @@ static tag_level_t* create_level(int i, int epoch) {
 }
 
 
-static void clear_tag(tag_t* tag_entry) {
+/**
+ *  @brief  Clear common data structure (Hashmap and Bitmask) used for the specific tag
+ *  
+ *  @param  key associated to Tag descriptor tag_key
+ *  @param  tag_key Tag Descriptor
+ *  
+ *  @return 0 on success, -EINTR if the lock was Killed
+ */ 
+static int clear_tag_common(int key, int tag_key) {
 
-    int key;
-        
-    key = tag_entry -> key;
+    // Lock the common data structure because it's necessary for write access
+    if(unlikely(down_write_killable(&common_lock) == -EINTR)) {
+        PRINT
+        printk("%s: RW Lock was interrupted.\n", MODNAME);
+        return -EINTR;
+    }
+    
+    // If the key is IPC_PRIVATE, there will not be an entry in the hashmap to free
     if(key != IPC_PRIVATE) { 
-        
         tag_table_entry_t* entry;
         entry = hashmap_get(tag_table, &(tag_table_entry_t){ .key = key});
         
-        if(entry != 0 && entry -> tag_key == tag_entry -> tag_key) { // Extra check just to be sure
+        //Extra check which should not be necessary, but just to be safe
+        if(likely(entry != 0 && entry -> tag_key == tag_key)) 
             hashmap_delete(tag_table, &(tag_table_entry_t){ .key = key});
-        } else {
-            printk("%s: Consistency error! Hashmap entry (key = %d, tag_desc = %d) and Tag entry (key = %d, tag_desc = %d) doesn't match.\n", 
-            MODNAME, entry -> key, entry -> tag_key, tag_entry -> key, tag_entry -> tag_key);
-        }
-
+        else
+            PRINT
+            printk("%s: Consistency error! Hashmap entry (key = %d, tag_desc = %d) and Tag entry (key = %d, tag_desc = %d) don't match.\n", 
+                MODNAME, entry -> key, entry -> tag_key, key, tag_key);
     }
         
-    if(clear_number(tag_bitmask, tag_entry -> tag_key) != 1)
-        printk("%s: Could not clear %d from bitmask.\n", MODNAME, tag_entry -> tag_key);
+    if(unlikely(clear_number(tag_bitmask, tag_key) != 1))
+        PRINT
+        printk("%s: Critical error! Could not clear %d from bitmask.\n", MODNAME, tag_key);
 
+    // Release the lock 
+    up_write(&common_lock); 
+
+    return 0;   
 }
+ 
 
-
+/**
+ *  @brief  Clear all the levels stored in tag_level
+ *  
+ *  @param  tag_level pointer to the array of the single levels pointers
+ *  @param  tag_key Tag Descriptor
+ *  
+ */ 
 static void clear_tag_level(tag_level_t** tag_level) {
 
     int i;
@@ -911,11 +1017,25 @@ static void clear_tag_level(tag_level_t** tag_level) {
 
 }
 
+/**
+ *  @brief  Free a single level
+ *  
+ *  @param  tag_level pointer to the single level struct
+ *  
+ */ 
 __always_inline static void free_level(tag_level_t* tag_level) {
     kfree(tag_level -> buffer);
     kfree(tag_level);
 }
 
+
+/**
+ *  @brief  Print the whole content of all the Tags (the one that have been created) and the hashamp
+ *          containing the mapping key -> tag descriptor
+ *          Note: this function is used only for debug puposes, 
+ *          so no locking mechanism optimization has been developed
+ *  
+ */ 
 static void print_tag(void){
 
     int i;
@@ -923,28 +1043,12 @@ static void print_tag(void){
     tag_t   tag;
     tag_table_entry_t* tag_table_entry;
 
-    //NOTA RIVEDI BENE L'USO DI LOCK
-
-    // This lock has to be done because in the frame between "if(tag_ptr != 0)" and the subsequent down_read(tag_ptr -> tag_lock)
-    // the tag gets deleted, there will be a memory access to a freed memory
-    // This lock can also be taken at each for iteration and released as soon as the tag_lock is taken, but
-    // since this operation is done to snapshot the situation, possibly avoiding external add/removal of tags
-    // while running, the lock has been set here. Moreover, it's a debugging functionality, not meant to be used in a stable
-    // release, so no particular optimization has been thought 
-
-    if(unlikely(down_read_interruptible(&common_lock) == -EINTR)) {                
-        printk("%s: RW Lock was interrupted.\n", MODNAME);
-                
-        return;
-    }
-
+   
     for(i = 0; i < MAX_TAGS; i++) {
 
-        // FORSE TAG_LOCK NON SERVE
         if(unlikely(down_read_interruptible(&(tag_lock[i])) == -EINTR)) {                
             PRINT
             printk("%s: RW Lock was interrupted.\n", MODNAME);
-            up_read(&common_lock);
             continue;
         }
                  
@@ -952,10 +1056,6 @@ static void print_tag(void){
         
         if(tag_ptr != 0) {
            
-            
-
-            //SE SI VUOLE AGGIUNGERE LA PRINT ANCHE DEI SINGOLI LIVELLI, È NECESSARIO LOCKARE I SINGOLI LIVELLI
-
             tag = *tag_ptr;
 
             printk("%s: Tag struct Key: %d; Tag Key: %d\n\t\tPermission: %d\n\t\tReady: %d; Counter: %d\n", MODNAME, 
@@ -967,6 +1067,13 @@ static void print_tag(void){
         up_read(&(tag_lock[i]));
 
     }
+
+    if(unlikely(down_read_interruptible(&common_lock) == -EINTR)) {                
+        PRINT
+        printk("%s: RW Lock was interrupted.\n", MODNAME); 
+        return;
+    }
+
 
     printk("%s: Hahsmap content: %ld items\n", MODNAME, hashmap_count(tag_table));    
     
@@ -1000,6 +1107,22 @@ static void print_tag(void){
     }
     
     up_read(&common_lock);
+}
+
+
+/**
+ *  @brief  Print the content of the level specified (the one that have been created)
+ *          Note: no lock has been introduced because the function gets called while 
+ *          already having the level locked
+ *  
+ */ 
+static void print_level(tag_level_t* tag_level, int tag) {
+    
+    if(tag_level == 0) return;
+    printk("%s: (%d) Tag: %d, level: %d, epoch: %d, waiting: %d (ready %d)\n\t\t\tsize: %d, buffer: %s \n", 
+        MODNAME, current -> pid, tag, tag_level -> level, tag_level -> epoch, tag_level -> waiting, tag_level -> ready, 
+        tag_level -> size, tag_level -> buffer);
+
 }
 
 

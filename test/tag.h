@@ -6,6 +6,7 @@
 
 #include <sys/syscall.h>
 #include <unistd.h>
+#include "../tag-module/include/tag.h"
 
 #ifndef __NR_tag_get
 #define __NR_tag_get 134
@@ -22,12 +23,6 @@
 #ifndef __NR_tag_ctl
 #define __NR_tag_ctl 183
 #endif
-
-#define TAG_OPEN    0
-#define TAG_CREAT   1
-
-#define TAG_AWAKE_ALL   0
-#define TAG_DELETE      1
 
 int tag_get(int key, int command, int permission) {
     return syscall(__NR_tag_get, key, command, permission);
