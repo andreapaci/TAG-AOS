@@ -20,9 +20,15 @@
 #include <asm/apic.h>
 #include <linux/syscalls.h>
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(4, 17, 0)
+#error "Kernel must be at least version 4.17.x"
+#endif
+
 #ifdef AUDIT
+#warning "Debug output Enabled"
 #define PRINT if(1)
 #else
+#warning "Debug output Disabled"
 #define PRINT if(0)
 #endif
 

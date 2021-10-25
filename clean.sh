@@ -1,5 +1,14 @@
 #!/bin/bash
 
+
+current_dir=${PWD##*/} 
+
+if [[ $current_dir != "TAG-AOS" ]]
+then
+    printf "Error! Run script from 'TAG-AOS' folder\n"
+    
+else
+
 printf "\n\nCleaning enviroment\n\n"
 
 sudo rmmod TAGMOD
@@ -20,3 +29,5 @@ make clean
 cd ..
 
 printf "\n\nCleaning done.\n\n"
+
+fi

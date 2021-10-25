@@ -88,7 +88,7 @@ int tag_get(int key, int command, int permission) {
         tag_key = get_avail_number(tag_bitmask);
         if(unlikely(tag_key < 0 || tag_key >= MAX_TAGS)) {
             PRINT
-            printk("%s: Critical error! No tag_key avaliable\n", MODNAME);
+            printk("%s: No tag_key avaliable\n", MODNAME);
             up_write(&common_lock);
             return -EPROTO;
         }
@@ -257,7 +257,7 @@ int tag_send(int tag, int level, char* buffer, size_t size) {
     // Input check (buffer == 0 is permitted if the thread just want to wake up reaceiving thread)
     if(tag < 0 || tag >= MAX_TAGS || level < 0 || level >= LEVELS || size < 0 || size > BUFFER_SIZE){
         PRINT
-        printk("%s TAG_SEND: Wrong parameter usage\n", MODNAME);
+        printk("%s: TAG_SEND: Wrong parameter usage\n", MODNAME);
         return -EINVAL;
     }
 
@@ -400,7 +400,7 @@ int tag_receive(int tag, int level, char* buffer, size_t size) {
     // Input check (buffer == NULL is allowed in case a thread just want to be woken up)
     if(tag < 0 || tag >= MAX_TAGS || level < 0 || level >= LEVELS || size < 0 || size > BUFFER_SIZE){
         PRINT
-        printk("%s TAG_RECEIVE: Wrong parameter usage\n", MODNAME);
+        printk("%s: TAG_RECEIVE Wrong parameter usage\n", MODNAME);
         return -EINVAL;
     }
 
@@ -1052,7 +1052,7 @@ static void print_tag(void){
     tag_t   tag;
     tag_table_entry_t* tag_table_entry;
 
-    printk("%s: Printing all Tags info\n", "PRINT");
+    printk("%s: Printing all Tags info\n", "PRINT-TAG");
    
     for(i = 0; i < MAX_TAGS; i++) {
 
@@ -1085,7 +1085,7 @@ static void print_tag(void){
     }
 
 
-    printk("%s: Hahsmap content: %ld items\n", "PRINT", hashmap_count(tag_table));    
+    printk("%s: Hahsmap content: %ld items\n", "PRINT-HASH", hashmap_count(tag_table));    
     
 
     for(i = 0; i < MAX_TAGS; i++) {
@@ -1130,8 +1130,8 @@ static void print_tag(void){
 static void print_level(tag_level_t* tag_level, int tag) {
     
     if(tag_level == 0) return;
-    printk("%s: TID: %d, Tag: %d, level: %d, epoch: %d, waiting: %d (ready %d) size: %ld, buffer: %s \n", 
-        "PRINT", current -> pid, tag, tag_level -> level, tag_level -> epoch, atomic_read(&(tag_level -> waiting)), tag_level -> ready, 
+    printk("%s: (TID: %d) Tag: %d, level: %d, epoch: %d, waiting: %d (ready %d), size: %ld, buffer: %s \n", 
+        "PRINT-LEVEL", current -> pid, tag, tag_level -> level, tag_level -> epoch, atomic_read(&(tag_level -> waiting)), tag_level -> ready, 
         tag_level -> size, tag_level -> buffer);
 
 }
@@ -1191,18 +1191,14 @@ int install_syscalls(void) {
     sys_tag_receive = (unsigned long) __x64_sys_tag_receive;
     sys_tag_ctl     = (unsigned long) __x64_sys_tag_ctl;
 
-    return
-    syscall_insert((unsigned long *) sys_tag_get)       *
-    syscall_insert((unsigned long *) sys_tag_send)      *
-    syscall_insert((unsigned long *) sys_tag_receive)   *
-    syscall_insert((unsigned long *) sys_tag_ctl);
+    
+
+    
+    tag_get_nr      = syscall_insert((unsigned long *) sys_tag_get);
+    tag_send_nr     = syscall_insert((unsigned long *) sys_tag_send);
+    tag_receive_nr  = syscall_insert((unsigned long *) sys_tag_receive);
+    tag_ctl_nr      = syscall_insert((unsigned long *) sys_tag_ctl);
+
+    return tag_get_nr * tag_send_nr * tag_receive_nr * tag_ctl_nr;
 
 }
-
-
-
-
-
-
-
-

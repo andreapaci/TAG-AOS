@@ -133,7 +133,7 @@ static int syscall_table_pattern(unsigned long long addr) {
  * 
  *  @param syscall_fuction pointer to the function to add
  * 
- *  @return 0 if insertion was not successful, 1 otherwise
+ *  @return 0 if insertion was not successful, syscall insertion offset otherwise
  *    
  */
 int syscall_insert(unsigned long* syscall_function) {
@@ -174,7 +174,7 @@ int syscall_insert(unsigned long* syscall_function) {
     printk("%s: Custom Syscall has been installed at address %llu with displacement %llu\n", 
             MODNAME, &syscall_table_addr[ni_syscall[displacement]], ni_syscall[displacement]);
     
-    return 1;       
+    return ni_syscall[displacement];       
 }
 EXPORT_SYMBOL(syscall_insert);
 

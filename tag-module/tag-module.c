@@ -16,7 +16,13 @@ hashmap_t*           tag_table;
 bitmask_t*           tag_bitmask;
 tag_t**              tags;
 struct rw_semaphore  common_lock;
-struct rw_semaphore  tag_lock[MAX_TAGS]; 
+struct rw_semaphore  tag_lock[MAX_TAGS];
+
+int tag_get_nr;
+int tag_send_nr;
+int tag_receive_nr;
+int tag_ctl_nr;
+
 
 static int initialize(void);
 
@@ -30,6 +36,17 @@ uint64_t tag_hash(const void *item, uint64_t seed0, uint64_t seed1 ) {
     return hashmap_sip( &(entry -> key), sizeof(int), seed0, seed1);
 }
 
+
+
+module_param(tag_get_nr,     int, S_IRUGO);
+module_param(tag_send_nr,    int, S_IRUGO);
+module_param(tag_receive_nr, int, S_IRUGO);
+module_param(tag_ctl_nr,     int, S_IRUGO);
+
+MODULE_PARM_DESC(tag_get_nr,     "tag_get() system call number");
+MODULE_PARM_DESC(tag_send_nr,    "tag_send() system call number");
+MODULE_PARM_DESC(tag_receive_nr, "tag_receive() system call number");
+MODULE_PARM_DESC(tag_ctl_nr,     "tag_ctl() system call number");
 
 
 int init_module(void) {

@@ -7,8 +7,16 @@ export MOD_DEBUG=1          # set 1 to enable debug/extra printing on kernel-lev
 
 #root_dir = $PWD
 
+current_dir=${PWD##*/} 
+
+if [[ $current_dir != "TAG-AOS" ]]
+then
+    printf "Error! Run script from 'TAG-AOS' folder\n"
+    
+else
+
 # Clean the enviroment (unmounting modules and cleaning the compilation artifact)
-sh clean.sh
+bash clean.sh
 
 
 if [[ $TEST_FUNC -eq 1 ]]
@@ -25,7 +33,7 @@ then
 
 else
     
-    printf "\n\nTesting modules\n\n"
+    printf "\n\nMounting modules\n\n"
     
     # Show and clean kernel log buffer
     dmesg
@@ -69,7 +77,7 @@ else
         printf "Running TAG Module testing using only single CPU\n"
         printf "______________________________________________________\n\n"
 
-        taskset --cpu-list 1 ./test_tag.o
+        #taskset --cpu-list 1 ./test_tag.o
         printf "\n\n______________________________________________________\n"
         printf "End test single CPU\n"
         printf "______________________________________________________\n\n"
@@ -89,3 +97,5 @@ fi
 cd ..
 
 printf "\n\nDone\n\n"
+
+fi

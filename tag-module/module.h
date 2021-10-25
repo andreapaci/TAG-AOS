@@ -31,10 +31,16 @@
 #include "../utils/include/hashmap.h"
 #include "tag-struct.h"
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(4, 17, 0)
+#error "Kernel must be at least version 4.17.x"
+#endif
+
 
 #ifdef AUDIT
+#warning "Debug output Enabled"
 #define PRINT if(1)
 #else
+#warning "Debug output Disabled"
 #define PRINT if(0)
 #endif
 
@@ -47,6 +53,12 @@ extern bitmask_t*           tag_bitmask;
 extern tag_t**              tags;
 extern struct rw_semaphore  common_lock;
 extern struct rw_semaphore  tag_lock[MAX_TAGS];
+
+// Offset of the installed syscall in the syscall table
+extern int tag_get_nr;
+extern int tag_send_nr;
+extern int tag_receive_nr;
+extern int tag_ctl_nr;
 
 
 int install_syscalls(void);

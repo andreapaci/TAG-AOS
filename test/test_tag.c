@@ -29,7 +29,7 @@ typedef struct input_struct {
     int key;
     int tag;
     int level;
-    int size;
+    size_t size;
 } input_t;
 
 
@@ -38,6 +38,7 @@ void interrupt_handler(int sig){
 }
 
 void* receive_thread(void* input);
+void* send_thread(void* input);
 void* awake_thread(void* input);
 void* delete_thread(void* input);
 
@@ -48,102 +49,49 @@ int test_ipc_private();
 
 int test_busy_ctl_interrupt();
 
-void* thread_fun();
-void* thread_rcv();
-void  create_del_test();
+int test_basic_read_write(size_t read_size, size_t send_size);
+
+int test_multiple_sizes(size_t read_size, size_t send_size);
 
 int main(int argc, char** argv) {
     
     signal(SIGINT, interrupt_handler);
     
-    printf("Testing various Tag functionality.\nMost of the debugging output will be visible with 'dmesg'\n\n");
+    printf("Testing various Tag functionality. Press Enter to continue...\nMost of the debugging output will be visible with 'dmesg'\n\n");
+
+    getchar();
 
     if(!test_tag_get()) return -1;
 
-    printf("Test with tag_get() executed Succesfully! Press Enter to continue\n(check 'dmesg' for log if needed and possibly clear the log)\n");
+    printf("Test with tag_get() executed Succesfully! Press Enter to continue...\n(check 'dmesg' for log if needed and possibly clear the log)\n");
     
     getchar();
 
-    if(!test_ipc_private()) return -1;
+  if(!test_ipc_private()) return -1;
 
-    printf("Test with tag_get() and IPC_PRIVATE executed Succesfully! Press Enter to continue\n(check 'dmesg' for log if needed and possibly clear the log)\n");
+    printf("Test with tag_get() and IPC_PRIVATE executed Succesfully! Press Enter to continue...\n(check 'dmesg' for log if needed and possibly clear the log)\n");
     
     getchar();
     
     if(!test_busy_ctl_interrupt()) return -1;
 
-    printf("Test with tag_receive() and tag_ctl() executed Succesfully! Press Enter to continue\n(check 'dmesg' for log if needed and possibly clear the log)\n");
+    printf("Test with tag_receive() and tag_ctl() executed Succesfully! Press Enter to continue...\n(check 'dmesg' for log if needed and possibly clear the log)\n");
     
     getchar();
 
-    /*test_failed_closing();
+    if(!test_basic_read_write(11, 11)) return -1;
 
-    test_next_epoch();
-
-    test_multiple_size();
-
-    test_ctl_awake();
-
-    pthread_t tid;
-
-    int ret;
-    ret = pthread_create(&tid, 0, thread_fun, 0);
-
-    if(ret != 0) {
-        printf("Error creating thread, error: %d\n", ret);
-        exit(ret);
-    }
-
-    printf("Main thread PID: %d\n", getpid());
-    printf("Main thread TID: %d\n", gettid());
-
-    create_del_test();
+    printf("Test with basic send/receive executed Succesfully! Press Enter to continue...\n(check 'dmesg' for log if needed and possibly clear the log)\n");
     
-    pthread_join(tid, 0);
+    getchar();
 
-    printf("----------------------------------------\n");
+    //test_next_epoch();
 
-    pthread_t tid_a[54];
-    for(int i = 0; i < 54; i++) {
-        ret = pthread_create(&tid_a[i], 0, thread_rcv, 0);
 
-        if(ret != 0) {
-            printf("Error creating thread, error: %d\n", ret);
-            exit(ret);
-        }
-    }
 
-*/
-    /*char buffer[20];
 
-    printf("Send message: \n");
-    scanf("%s", buffer);
-    printf("Ok\n");
-    */
-  /*  printf("Main - Opening %d\n", tag_get(4, TAG_CREAT, 1));
-    
-    sleep(10);
-
-    tag_send(0, 1, 0, 0);
-    
-    printf("Main - Send Done\n");
-
-    sleep(10);
-    
-    printf("Main - CTL\n");
-
-    tag_ctl(0, TAG_AWAKE_ALL);
-
-    printf("Main - CTL Done\n");
-    
-    for(int i = 0; i < 54; i++) {
-        
-        pthread_join(tid_a[i], 0);
-    
-    }
-    printf("All Done\n");
-    */
 }
+
 
 int test_tag_get() {
 
@@ -155,7 +103,7 @@ int test_tag_get() {
 
     printf("\nCreating %d tag services\n", test_tags);
     for(i = 0; i < test_tags; i++) {
-        ret_val = tag_get((i + 1) * 3, TAG_CREAT, TAG_PERM_ALL);
+        ret_val = tag_get(((i + 1) * 3), TAG_CREAT, TAG_PERM_ALL);
         if(i < max_tags && ret_val == i)
             printf("Correct! tag_get (key %d) returned tag_descr %d\n", (i + 1) *3, ret_val);
         else if(i >= max_tags && ret_val < 0) 
@@ -179,7 +127,32 @@ int test_tag_get() {
         }
     }
 
+    printf("\nDelete random instances (12, 23, 244)\n");
+    ret_val = tag_ctl(23, TAG_DELETE);
+    if(ret_val != 1) { printf("Error in deleting\n"); return 0; }
 
+    ret_val = tag_ctl(244, TAG_DELETE);
+    if(ret_val != 1) { printf("Error in deleting\n"); return 0; }
+
+    ret_val = tag_ctl(12, TAG_DELETE);
+    if(ret_val != 1) { printf("Error in deleting\n"); return 0; }
+
+    printf("\nCreate random instances\n");
+    ret_val = tag_get(23455, TAG_CREAT, TAG_PERM_ALL);
+    if(ret_val != 12) { printf("Error in deleting\n"); return 0; }
+    printf("Tag created: %d\n", ret_val);
+
+
+    ret_val = tag_get(0, TAG_CREAT, TAG_PERM_ALL);
+    if(ret_val != 23) { printf("Error in deleting\n"); return 0; }
+    printf("Tag created: %d\n", ret_val);
+
+
+    ret_val = tag_get(98821, TAG_CREAT, TAG_PERM_ALL);
+    if(ret_val != 244) { printf("Error in deleting\n"); return 0; }
+    printf("Tag created: %d\n", ret_val);
+
+    
     printf("\nDelete all instances\n");
     for(i = 0; i < test_tags; i++) {
         ret_val = tag_ctl(i, TAG_DELETE);
@@ -262,7 +235,7 @@ int test_ipc_private() {
         }
     }
 
-    printf("\nTesting multiple 'tag_get' in create with IPC_PRIVATE Done\n\n", gettid());
+    printf("\nTesting multiple 'tag_get' in create with IPC_PRIVATE Done\n\n");
 
 
 
@@ -273,13 +246,11 @@ int test_ipc_private() {
 int test_busy_ctl_interrupt() {
     
     int ret_val, ret;
-    pthread_t recv_thread, ctl_thread;
-    input_t input;
+    pthread_t recv_thread_1, recv_thread_2, recv_thread_3, recv_thread_4, ctl_thread;
+    input_t input_1, input_2, input_3, input_4;
 
     printf("\nTesting a receive and ctl interaction (TID %d)\n\n", gettid());
 
-
-    //PROVA A METTERE A RECEIVE THREAD BUFFER == NULL
     
     printf("\nTesting a Receive and Delete/Awake All \n");
     ret_val = tag_get(0, TAG_CREAT, TAG_PERM_USR);
@@ -290,9 +261,33 @@ int test_busy_ctl_interrupt() {
 
     printf("Created Tag with descriptor %d\n", ret_val);
 
-    input = (input_t){ .tag = ret_val, .level = 0, .size = 10};
+    input_1 = (input_t){ .tag = ret_val, .level = 0, .size = 10};
 
-    ret = pthread_create(&recv_thread, 0, receive_thread, &input);
+    input_2 = (input_t){ .tag = ret_val, .level = 24, .size = 10};
+
+    input_3 = (input_t){ .tag = ret_val, .level = 17, .size = 10};
+
+    input_4 = (input_t){ .tag = ret_val, .level = 32, .size = 10};
+
+    ret = pthread_create(&recv_thread_1, 0, receive_thread, &input_1);
+    if(ret != 0) {
+        printf("Error creating thread, error: %d\n", ret);
+        return 0;
+    }
+
+    ret = pthread_create(&recv_thread_2, 0, receive_thread, &input_2);
+    if(ret != 0) {
+        printf("Error creating thread, error: %d\n", ret);
+        return 0;
+    }
+
+    ret = pthread_create(&recv_thread_3, 0, receive_thread, &input_3);
+    if(ret != 0) {
+        printf("Error creating thread, error: %d\n", ret);
+        return 0;
+    }
+
+    ret = pthread_create(&recv_thread_4, 0, receive_thread, &input_4);
     if(ret != 0) {
         printf("Error creating thread, error: %d\n", ret);
         return 0;
@@ -300,11 +295,11 @@ int test_busy_ctl_interrupt() {
 
     printf("Receive thread started\n");
 
-    sleep(3);
+    sleep(2);
 
     printf("Try to delete Tag while in use\n");
 
-    ret = pthread_create(&ctl_thread, 0, delete_thread, &input);
+    ret = pthread_create(&ctl_thread, 0, delete_thread, &input_1);
     if(ret != 0) {
         printf("Error creating thread, error: %d\n", ret);
         return 0;
@@ -314,7 +309,7 @@ int test_busy_ctl_interrupt() {
 
 
     printf("Try to awake receiving thread\n");
-    ret = pthread_create(&ctl_thread, 0, awake_thread, &input);
+    ret = pthread_create(&ctl_thread, 0, awake_thread, &input_1);
     if(ret != 0) {
         printf("Error creating thread, error: %d\n", ret);
         return 0;
@@ -324,7 +319,10 @@ int test_busy_ctl_interrupt() {
 
 
     
-    pthread_join(recv_thread, 0);
+    pthread_join(recv_thread_1, 0);
+    pthread_join(recv_thread_2, 0);
+    pthread_join(recv_thread_3, 0);
+    pthread_join(recv_thread_4, 0);
     pthread_join(ctl_thread, 0);
 
     printf("Receive thread woken up succesfully\n");
@@ -332,7 +330,25 @@ int test_busy_ctl_interrupt() {
 
     printf("\nTesting an interrupt on a blocked receive\n");
 
-    ret = pthread_create(&recv_thread, 0, receive_thread, &input);
+    ret = pthread_create(&recv_thread_1, 0, receive_thread, &input_1);
+    if(ret != 0) {
+        printf("Error creating thread, error: %d\n", ret);
+        return 0;
+    }
+
+    ret = pthread_create(&recv_thread_2, 0, receive_thread, &input_2);
+    if(ret != 0) {
+        printf("Error creating thread, error: %d\n", ret);
+        return 0;
+    }
+
+    ret = pthread_create(&recv_thread_3, 0, receive_thread, &input_3);
+    if(ret != 0) {
+        printf("Error creating thread, error: %d\n", ret);
+        return 0;
+    }
+
+    ret = pthread_create(&recv_thread_4, 0, receive_thread, &input_4);
     if(ret != 0) {
         printf("Error creating thread, error: %d\n", ret);
         return 0;
@@ -342,15 +358,22 @@ int test_busy_ctl_interrupt() {
     
     sleep(2);
     
-    pthread_kill(recv_thread, SIGINT);
+    pthread_kill(recv_thread_1, SIGINT);
+    pthread_kill(recv_thread_2, SIGINT);
+    pthread_kill(recv_thread_3, SIGINT);
+    pthread_kill(recv_thread_4, SIGINT);
     
-    pthread_join(recv_thread, 0);
+    
+    pthread_join(recv_thread_1, 0);
+    pthread_join(recv_thread_2, 0);
+    pthread_join(recv_thread_3, 0);
+    pthread_join(recv_thread_4, 0);
 
     printf("Receive thread woken up succesfully from interrupt\n");
 
 
     printf("\nDeleting tag\n");
-    ret = pthread_create(&ctl_thread, 0, delete_thread, &input);
+    ret = pthread_create(&ctl_thread, 0, delete_thread, &input_1);
     if(ret != 0) {
         printf("Error creating thread, error: %d\n", ret);
         return 0;
@@ -360,6 +383,104 @@ int test_busy_ctl_interrupt() {
 
 
     printf("\nTesting a receive and ctl interaction Done\n\n");
+
+}
+
+int test_basic_read_write(size_t read_size, size_t send_size) {
+
+    int ret_val, ret, tag;
+    pthread_t recv_thread_1, recv_thread_2, snd_thread, snd_thread_2;
+    input_t input_recv_1, input_recv_2, input_send;
+
+    printf("\nTesting a basic send/receive with sizes: receive: %ld, send %ld (TID %d)\n\n", read_size, send_size, gettid());
+
+    printf("\nCreate Tag instance\n");
+    tag = tag_get(0, TAG_CREAT, TAG_PERM_USR);
+    if(tag < 0) {
+        printf("Error in creating Tag with IPC_PRIVATE (tag %d)\n", tag);
+        return 0;
+    }
+    printf("Created Tag with descriptor %d\n", tag);
+
+    input_recv_1 = (input_t){ .tag = tag, .level = 31, .size = read_size - 1};
+    input_recv_2 = (input_t){ .tag = tag, .level = 31, .size = read_size - 4};
+    input_send = (input_t){ .tag = tag, .level = 31, .size = send_size};
+
+    ret = pthread_create(&recv_thread_1, 0, receive_thread, &input_recv_1);
+    if(ret != 0) {
+        printf("Error creating thread, error: %d\n", ret);
+        return 0;
+    }
+
+    ret = pthread_create(&recv_thread_2, 0, receive_thread, &input_recv_2);
+    if(ret != 0) {
+        printf("Error creating thread, error: %d\n", ret);
+        return 0;
+    }
+
+    printf("Receive thread started\n");
+
+    sleep(2);
+
+    ret = pthread_create(&snd_thread, 0, send_thread, &input_send);
+    if(ret != 0) {
+        printf("Error creating thread, error: %d\n", ret);
+        return 0;
+    }
+
+    printf("Send thread started\n");
+
+    pthread_join(recv_thread_1, 0);
+    pthread_join(recv_thread_2, 0);
+    pthread_join(snd_thread, 0);
+
+
+    input_recv_1 = (input_t){ .tag = tag, .level = 31, .size = read_size - 1};
+    input_recv_2 = (input_t){ .tag = tag, .level = 31, .size = read_size - 4};
+    input_send = (input_t){ .tag = tag, .level = 31, .size = send_size - 5};
+
+    ret = pthread_create(&recv_thread_1, 0, receive_thread, &input_recv_1);
+    if(ret != 0) {
+        printf("Error creating thread, error: %d\n", ret);
+        return 0;
+    }
+
+    ret = pthread_create(&recv_thread_2, 0, receive_thread, &input_recv_2);
+    if(ret != 0) {
+        printf("Error creating thread, error: %d\n", ret);
+        return 0;
+    }
+
+    printf("Receive thread started\n");
+
+    sleep(2);
+
+    ret = pthread_create(&snd_thread, 0, send_thread, &input_send);
+    if(ret != 0) {
+        printf("Error creating thread, error: %d\n", ret);
+        return 0;
+    }
+
+    ret = pthread_create(&snd_thread_2, 0, send_thread, &input_send);
+    if(ret != 0) {
+        printf("Error creating thread, error: %d\n", ret);
+        return 0;
+    }
+
+
+    printf("Send thread started\n");
+
+    pthread_join(recv_thread_1, 0);
+    pthread_join(recv_thread_2, 0);
+    pthread_join(snd_thread, 0);
+    pthread_join(snd_thread_2, 0);
+
+
+    printf("\nDone. Deleting tag\n");
+
+    ret_val = tag_ctl(tag, TAG_DELETE);
+
+    printf("Delete done. ret_val: %d\n", ret_val);
 
 }
 
@@ -385,6 +506,30 @@ void* receive_thread(void* input) {
     return 0;
 
 }
+
+void* send_thread(void* input) {
+
+
+    int tag, level, size, ret_val;
+    char* buffer;
+
+    tag   = ((input_t*) input) -> tag;
+    level = ((input_t*) input) -> level;
+    size  = ((input_t*) input) -> size;
+
+    buffer = "Messaggio-prova";
+    if(buffer == 0) printf("Error in allocating buffer for sender (TID %d)\n", gettid());
+
+    printf("[SEND %d] Sender started\n", gettid());
+
+    ret_val = tag_send(tag, level, buffer, size);
+
+    printf("[SEND %d] Sender done. ret_val: %d\n", gettid(), ret_val);
+
+    return 0;
+
+}
+
 void* awake_thread(void* input) {
 
     int tag, ret_val;
@@ -400,6 +545,7 @@ void* awake_thread(void* input) {
     return 0;
 
 }
+
 void* delete_thread(void* input) {
 
     int tag, ret_val;
@@ -413,63 +559,6 @@ void* delete_thread(void* input) {
     printf("[DELETE %d] Delete done. ret_val: %d\n", gettid(), ret_val);
 
     return 0;
-}
-
-
-
-void* thread_fun(){
-
-    printf("Created thread PID: %d\n", getpid());
-    printf("Created thread TID: %d\n", gettid());
-}
-
-void  create_del_test() {
-
-    printf("tag_get: %d\n", tag_get(1,TAG_CREAT,1));
-    printf("tag_get: %d\n", tag_get(1,TAG_CREAT,1));
-    printf("tag_get: %d\n", tag_get(1,TAG_OPEN,1));
-    
-    printf("tag_get: %d\n", tag_get(2,TAG_CREAT,1));
-    printf("tag_get: %d\n", tag_get(3,TAG_CREAT,1));
-
-    printf("tag_ctl: %d\n", tag_ctl(0,TAG_DELETE));
-
-    printf("tag_get: %d\n", tag_get(1,TAG_OPEN,1));
-    printf("tag_get: %d\n", tag_get(1,TAG_CREAT,1));
-
-    printf("tag_ctl: %d\n", tag_ctl(0,TAG_DELETE));
-    printf("tag_ctl: %d\n", tag_ctl(1,TAG_DELETE));
-    printf("tag_ctl: %d\n", tag_ctl(2,TAG_DELETE));
-
-    
-    printf("tag_get: %d\n", tag_get(1,TAG_OPEN,1));
-    printf("tag_get: %d\n", tag_get(24,TAG_OPEN,1));
-
-    printf("tag_get: %d\n", tag_get(24,TAG_CREAT,1));
-
-    printf("tag_ctl: %d\n", tag_ctl(0,TAG_DELETE));
-    printf("tag_ctl: %d\n", tag_ctl(16,TAG_DELETE));
-}
-
-void* thread_rcv(){
-
-    int tid = gettid() % 54;
-
-    sleep(5);
-    printf("%d - Opening tag: %d\n", tid, tag_get(4, TAG_OPEN, 1));
-
-    sleep(2);
-    
-    tag_receive(0, 1, 0, 0);
-
-    printf("%d - Receive Done\n", tid );
-
-    printf("%d - Receiving on random level\n", tid);
-
-    tag_receive(0, tid % (30) , 0, 0);
-
-    printf("%d - Done\n", tid);
-
 }
 
 
