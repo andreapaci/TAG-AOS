@@ -11,7 +11,7 @@
 
 #define SEED0 401861
 #define SEED1 879023
-#define HASHMAP_CAP 256
+#define HASHMAP_CAP 2560
 
 int test_bitmask(void);
 int test_hashmap(void);

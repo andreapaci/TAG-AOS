@@ -33,10 +33,13 @@ unsigned long long get_pt_addr(void) {
  */
 void disable_WP(unsigned long* flags, unsigned long cr0) {
     
+    unsigned long modified_cr0; 
+    
     local_irq_save(*flags);
     preempt_disable();
 
-    unsigned long modified_cr0 = cr0 & ~X86_CR0_WP;
+    
+    modified_cr0 = cr0 & ~X86_CR0_WP;
 
     PRINT
     printk("%s: Disabling Write Protection Bit in CR0", MODNAME);

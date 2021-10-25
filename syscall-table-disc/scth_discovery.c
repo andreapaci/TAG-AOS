@@ -23,6 +23,7 @@ void find_syscall_table(void) {
 
     unsigned long long page;
     unsigned long long current_pg;
+    int i;
 
     for(page = START_ADDR; page < END_ADDR; page += PAGE_SIZE_DEF) {
 
@@ -40,8 +41,8 @@ void find_syscall_table(void) {
                     printk("%s: Syscall table found (Page addr: %llu)\n", MODNAME, current_pg);
                     printk("%s: Syscall address %llu\n", MODNAME, (unsigned long long) syscall_table_addr);
                     printk("%s: Sys_ni has value %llu\n", MODNAME, sys_ni_address);
-                    int i = 0;
-                    for(; i < FREE_ENTRIES; i++) {
+                    
+                    for(i = 0; i < FREE_ENTRIES; i++) {
                         printk("%s: Entry %d of ni_syscall: %llu\n", 
                         MODNAME, i, syscall_table_addr[ni_syscall[i]]);
                     }
@@ -74,7 +75,7 @@ void find_syscall_table(void) {
 static int syscall_table_pattern(unsigned long long addr) {
 
 
-    unsigned long long offs;
+    unsigned long long *start_tb, offs, first_ni_syscall;
 
     for(offs = addr; offs < addr + PAGE_SIZE_DEF; offs += 1ull) {
         
@@ -86,8 +87,8 @@ static int syscall_table_pattern(unsigned long long addr) {
             if(get_phys_frame(next_page) == -1) return 0;
 
 
-        unsigned long long* start_tb = (unsigned long long *) offs;
-        unsigned long long first_ni_syscall = start_tb[ni_syscall[0]];
+        start_tb = (unsigned long long *) offs;
+        first_ni_syscall = start_tb[ni_syscall[0]];
         
         //Check if first_ni_syscall is a good fit as sys_ni function pointer
         if(((first_ni_syscall & 0x3) == 0) &&
@@ -106,13 +107,14 @@ static int syscall_table_pattern(unsigned long long addr) {
                 if(condition_check) continue;
 
                 // Check if the area before first_ni_syscall points to ni_syscall
-                int j = 1;
-                for(; j < (int)ni_syscall[0]; j++)  {
+                int j;
+                
+                for(j = 1; j < (int)ni_syscall[0]; j++)  {
                     if( start_tb[j] == start_tb[ni_syscall[0]]) condition_check = 1;
                 }
                 if(condition_check) continue; 
 
-                syscall_table_addr = offs;
+                syscall_table_addr = (unsigned long long*) offs;
                 sys_ni_address = start_tb[ni_syscall[0]];
 
                 return 1;
@@ -136,13 +138,18 @@ static int syscall_table_pattern(unsigned long long addr) {
  */
 int syscall_insert(unsigned long* syscall_function) {
 
+    unsigned long long* insertion_address;
+    unsigned int        displacement;
+    unsigned long       flags, cr0;
+
     if(syscall_table_addr == 0 || sys_ni_address == 0) {
         printk("%s: System Call table not avaliable. Skipping installation\n", MODNAME);
         return 0;
     }
 
-    unsigned long long* insertion_address = 0;
-    unsigned int        displacement = 0;
+    
+    insertion_address = 0;
+    displacement = 0;
 
     int i = 0;
     for(; i < FREE_ENTRIES; i++)
@@ -157,11 +164,11 @@ int syscall_insert(unsigned long* syscall_function) {
         return 0;
     }
     
-    unsigned long   flags;
-    unsigned long   cr0 = read_cr0();
+    
+   cr0 = read_cr0();
 
     disable_WP(&flags, cr0);
-    *insertion_address = syscall_function;
+    *insertion_address = (unsigned long long) syscall_function;
     enable_WP(&flags, cr0);
 
     printk("%s: Custom Syscall has been installed at address %llu with displacement %llu\n", 

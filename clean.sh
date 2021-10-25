@@ -1,6 +1,6 @@
 #!/bin/bash
 
-printf "\n******************\nCleaning enviroment\n\n"
+printf "\n\nCleaning enviroment\n\n"
 
 sudo rmmod TAGMOD
 sudo rmmod SCTH
@@ -19,4 +19,4 @@ make clean
 
 cd ..
 
-printf "\n******************\nCleaning done.\n\n"
+printf "\n\nCleaning done.\n\n"

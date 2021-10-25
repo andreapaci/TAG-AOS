@@ -13,7 +13,7 @@ sh clean.sh
 
 if [[ $TEST_FUNC -eq 1 ]]
 then
-    printf "\n******************\nTesting utilities functionalities\n\n"
+    printf "\n\nTesting utilities functionalities\n\n"
     
     cd ./test
 
@@ -25,7 +25,7 @@ then
 
 else
     
-    printf "\n******************\nTesting modules\n\n"
+    printf "\n\nTesting modules\n\n"
     
     # Show and clean kernel log buffer
     dmesg
@@ -41,7 +41,7 @@ else
     if [[ $TEST_SYSCALL -eq 1 ]]
     then
 
-        printf "\n******************\nTesting System call table hacker only\n\n"
+        printf "\n\nTesting System call table hacker only\n\n"
 
         cd ../test
 
@@ -64,11 +64,28 @@ else
 
         # Compile and run TAG module tester
         make test_tag_sys
+
+        printf "\n\n______________________________________________________\n"
+        printf "Running TAG Module testing using only single CPU\n"
+        printf "______________________________________________________\n\n"
+
         taskset --cpu-list 1 ./test_tag.o
+        printf "\n\n______________________________________________________\n"
+        printf "End test single CPU\n"
+        printf "______________________________________________________\n\n"
+
+        printf "\n\n______________________________________________________\n"
+        printf "Running TAG Module testing multiple CPUs\n"
+        printf "______________________________________________________\n\n"
+
+        ./test_tag.o
+        printf "\n\n______________________________________________________\n"
+        printf "End test multiple CPUs\n"
+        printf "______________________________________________________\n\n"
     fi
 
 fi
 
 cd ..
 
-printf "\n******************\nDone\n\n"
+printf "\n\nDone\n\n"

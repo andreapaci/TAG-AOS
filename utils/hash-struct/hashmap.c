@@ -11,9 +11,7 @@
 
 #include "../include/hashmap.h"
 
-
-
-static __always_inline void *alloc(size_t size) { return kzalloc(size, GFP_ATOMIC); }
+static __always_inline void *alloc(size_t size) { return kzalloc(size, GFP_KERNEL); }
 static __always_inline void dealloc(void* obj) { kfree(obj); }
 
 

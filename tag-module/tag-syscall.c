@@ -56,7 +56,7 @@ int tag_get(int key, int command, int permission) {
     if(command == TAG_CREAT) {
 
         // Check correct usage of the permission parameter
-        if(permission != TAG_PERM_USR || permission != TAG_PERM_ALL) {
+        if(permission != TAG_PERM_USR && permission != TAG_PERM_ALL) {
             PRINT
             printk("%s: Permission invalid.\n", MODNAME);
             return -EINVAL;
@@ -64,7 +64,7 @@ int tag_get(int key, int command, int permission) {
         
         // Access common lock in write mode. This is necessary because common data structure will be accessed
         //  - Hashamp (containing the mapping [key -> tag descriptor])
-        //  - Bitmask (for retriving the first free tag descriptor value)
+        //  - Bitmask (for retriving the first avaliable tag descriptor value)
         // Those structs are not safe to use, in particular the Hashmap because of the bucket resizing (memory allocation/deallocation)
         // The bitmask could theoretically be accessed in concurrency using the "atmomic" operation on bits, but since the only access to it
         // is next to the one made for the hashmap (even for deleting a tag), there's no real performance boost in enabling concurrent
@@ -86,7 +86,7 @@ int tag_get(int key, int command, int permission) {
         // Get available Tag descriptor number
         int tag_key; 
         tag_key = get_avail_number(tag_bitmask);
-        if(unlikely(tag_key < 0)) {
+        if(unlikely(tag_key < 0 || tag_key >= MAX_TAGS)) {
             PRINT
             printk("%s: Critical error! No tag_key avaliable\n", MODNAME);
             up_write(&common_lock);
@@ -238,12 +238,6 @@ int tag_get(int key, int command, int permission) {
 }
 
 
-
-
-
-
-
-
 /**
  *  @brief  Send message to a Tag
  *  
@@ -258,16 +252,16 @@ int tag_send(int tag, int level, char* buffer, size_t size) {
 
 
     PRINT
-    printk("%s: TAG_SEND called. TID: %d, tag %d, level %d, buffer: %s, size: %d\n", MODNAME, current->pid, tag, level, buffer, size);
+    printk("%s: TAG_SEND called. TID: %d, tag %d, level %d, buffer: %s, size: %ld\n", MODNAME, current->pid, tag, level, buffer, size);
 
-    // Input check
-    if(tag < 0 || tag >= MAX_TAGS || level < 0 || level >= LEVELS || buffer == 0 || size < 0 || size > BUFFER_SIZE){
+    // Input check (buffer == 0 is permitted if the thread just want to wake up reaceiving thread)
+    if(tag < 0 || tag >= MAX_TAGS || level < 0 || level >= LEVELS || size < 0 || size > BUFFER_SIZE){
         PRINT
-        prinkt("%s TAG_SEND: Wrong parameter usage\n", MODNAME);
+        printk("%s TAG_SEND: Wrong parameter usage\n", MODNAME);
         return -EINVAL;
     }
 
-
+    if(buffer == 0) size = 0;
 
 
     // Get lock to access the (used to avoid removal while accessing the TAG)
@@ -288,7 +282,7 @@ int tag_send(int tag, int level, char* buffer, size_t size) {
     }
 
     // Root can always access
-    if(tag_entry -> permission && current_euid().val != 0 && tag_entry -> euid != current_euid().val) {
+    if(tag_entry -> permission == TAG_PERM_USR && current_euid().val != 0 && tag_entry -> euid != current_euid().val) {
         PRINT
         printk("%s: Could not access the Tag service %d: permission error\n", MODNAME, tag);
         up_read(&(tag_lock[tag]));
@@ -399,16 +393,18 @@ int tag_send(int tag, int level, char* buffer, size_t size) {
 int tag_receive(int tag, int level, char* buffer, size_t size) { 
 
     PRINT
-    printk("%s: TAG_RECEIVE called. TID: %d, tag %d, level %d, size: %d\n", MODNAME, current->pid, tag, level, size);
+    printk("%s: TAG_RECEIVE called. TID: %d, tag %d, level %d, size: %ld\n", MODNAME, current->pid, tag, level, size);
 
     int return_code;
 
-    // Input check
-    if(tag < 0 || tag >= MAX_TAGS || level < 0 || level >= LEVELS || buffer == 0 || size < 0 || size > BUFFER_SIZE){
+    // Input check (buffer == NULL is allowed in case a thread just want to be woken up)
+    if(tag < 0 || tag >= MAX_TAGS || level < 0 || level >= LEVELS || size < 0 || size > BUFFER_SIZE){
         PRINT
-        prinkt("%s TAG_RECEIVE: Wrong parameter usage\n", MODNAME);
+        printk("%s TAG_RECEIVE: Wrong parameter usage\n", MODNAME);
         return -EINVAL;
     }
+
+    if(buffer == 0) size = 0;
 
 
     if(unlikely(down_read_interruptible(&(tag_lock[tag])) == -EINTR)) {                
@@ -424,12 +420,11 @@ int tag_receive(int tag, int level, char* buffer, size_t size) {
         PRINT
         printk("%s: Tag %d is not created.\b", MODNAME, tag);
         up_read(&(tag_lock[tag]));
-        //Metti val corretto   
-        return -1;
+        return -ENODATA;
     }
 
     // Root can always access
-    if(tag_entry -> permission && current_euid().val != 0 && tag_entry -> euid != current_euid().val) {
+    if(tag_entry -> permission == TAG_PERM_USR && current_euid().val != 0 && tag_entry -> euid != current_euid().val) {
         PRINT
         printk("%s: Could not access the Tag service %d: permission error\n", MODNAME, tag);
         up_read(&(tag_lock[tag]));
@@ -480,10 +475,9 @@ int tag_receive(int tag, int level, char* buffer, size_t size) {
     if(tag_level -> ready == 1) {
 
         PRINT
-        prinkt("%s: Creating new Level Epoch (Tag: %d, Level: %d)\n", MODNAME, tag, level);
+        printk("%s: Creating new Level Epoch (Tag: %d, Level: %d)\n", MODNAME, tag, level);
 
-        struct tag_level_t* old_level;
-        old_level = tag_level;
+        tag_level_t* old_level;
         
         // Lock level structure
         // Lock has been taken here to avoid locking every time a receive occurs (since is not necessary), resulting
@@ -510,7 +504,11 @@ int tag_receive(int tag, int level, char* buffer, size_t size) {
         // (to wait for the thread that started the allocation of a new level)
         // Every one accessing this specific level have to wait this routine to end (even in read) because the pointer to the level will
         // be changed, and so need those thread need to see the correct version of it
+        
+        
         tag_level = (tag_entry -> tag_level)[level];
+        old_level = tag_level;
+
 
         if(unlikely(tag_level == 0)) {
             PRINT
@@ -590,7 +588,7 @@ int tag_receive(int tag, int level, char* buffer, size_t size) {
 
     // When return_code == 0 it means it has been woken up, otherwise it was an interrupt
     if(return_code == 0) return_code = 1;
-    else return 0;
+    else return_code = 0;
 
     // If the return code is 1 it means it has been woken up by a "wake_up" call, and if tag_level -> ready == 1 it means there's
     // something to read in the buffer. Otherwise, the next steps are just skipped
@@ -598,7 +596,7 @@ int tag_receive(int tag, int level, char* buffer, size_t size) {
         int current_size;
         current_size = min(size, tag_level -> size);
         // If current_size is 0, it won't copy anything, it will just wake up and go on
-        if(current_size > 0)
+        if(current_size > 0 && buffer != 0)
             if(unlikely(copy_to_user(buffer, tag_level -> buffer, current_size)) != 0) {
                 PRINT
                 printk("%s: Could not copy the message to the User.\n", MODNAME);
@@ -637,11 +635,20 @@ int tag_receive(int tag, int level, char* buffer, size_t size) {
 
         // If a next epoch exists it's possible to free the level
         if(new_tag_level -> epoch > tag_level -> epoch) {
+            PRINT {
+                printk("%s: Deleting Tag %d Level %d of epoch %d\n", MODNAME, tag, level, tag_level -> epoch);
+                print_level(tag_level, tag);
+            }
             up_write(&(tag_level -> rcu_lock));
             free_level(tag_level);
+
+            
         
         } else { 
-            
+            PRINT {
+                printk("%s: Clearing Tag %d Level %d of epoch %d\n", MODNAME, tag, level, tag_level -> epoch);
+                print_level(tag_level, tag);
+            }
             //If a new tag level epoch doesn't exists set level_ready to 0 (the level is not used anymore)
             tag_level -> ready = 0;
             
@@ -652,9 +659,10 @@ int tag_receive(int tag, int level, char* buffer, size_t size) {
             memset(tag_level -> buffer, 0, tag_level -> size);
             asm volatile ("sfence" ::: "memory");
 
+            up_write(&(tag_level -> rcu_lock));
         }
 
-        up_write(&(tag_level -> rcu_lock));
+       
     }
    
     if(atomic_dec_and_test(&(tag_entry -> waiting))) 
@@ -663,7 +671,7 @@ int tag_receive(int tag, int level, char* buffer, size_t size) {
     up_read(&(tag_lock[tag]));
 
     PRINT
-    printk("%s: TAG_RECEIVE done. TID: %d, tag %d, level %d, buffer: %d, size: %d\n", MODNAME, current->pid, tag, level, buffer, size);
+    printk("%s: TAG_RECEIVE done. TID: %d, tag %d, level %d, buffer: %s, size: %ld\n", MODNAME, current->pid, tag, level, buffer, size);
 
     return return_code;
 }
@@ -697,7 +705,7 @@ int tag_ctl(int tag, int command) {
     // Input check
     if(tag < 0 || tag >= MAX_TAGS){
         PRINT
-        prinkt("%s TAG_CTL: Wrong parameter usage\n", MODNAME);
+        printk("%s: TAG_CTL Wrong parameter usage\n", MODNAME);
         return -EINVAL;
     }
 
@@ -721,7 +729,7 @@ int tag_ctl(int tag, int command) {
         }
 
         // Root can always access
-        if(tag_entry -> permission && current_euid().val != 0 && tag_entry -> euid != current_euid().val) {
+        if(tag_entry -> permission == TAG_PERM_USR && current_euid().val != 0 && tag_entry -> euid != current_euid().val) {
             PRINT
             printk("%s: Could not access the Tag service %d: permission error\n", MODNAME, tag);
             up_read(&(tag_lock[tag]));
@@ -804,16 +812,16 @@ int tag_ctl(int tag, int command) {
         }
         */
 
-       // Since TAG_CTL is not requested to be a blocking service, it has been used a trylock which will succed only
-       // if no one is using the specific tag
-       // For the blocking variant just comment the trylock and uncomment the down_write_killable above
+        // Since TAG_CTL is not requested to be a blocking service, it has been used a trylock which will succed only
+        // if no one is using the specific tag
+        // For the blocking variant just comment the trylock and uncomment the down_write_killable above
         if(!down_write_trylock(&(tag_lock[tag]))) {
            PRINT
            printk("%s: Could not delete tag %d, occupied\n", MODNAME, tag);
            return 0;
         }
 
-        //Taking the common_lock in write will assure that no thread is accessing the common data structures
+        // Taking the common_lock in write will assure that no thread is accessing the common data structures
         // (ie no thread is trying to add/get/delete any tag and no thread is starting a tag_send or tag_rcv)
         tag_t* tag_entry; 
         tag_entry = tags[tag];
@@ -826,7 +834,7 @@ int tag_ctl(int tag, int command) {
         }
 
         // Root can always access
-        if(tag_entry -> permission && current_euid().val != 0 && tag_entry -> euid != current_euid().val) {
+        if(tag_entry -> permission == TAG_PERM_USR && current_euid().val != 0 && tag_entry -> euid != current_euid().val) {
             PRINT
             printk("%s: Could not access the Tag service %d: permission error\n", MODNAME, tag);
             up_write(&(tag_lock[tag]));
@@ -858,7 +866,7 @@ int tag_ctl(int tag, int command) {
         // any of the above instruction fails (there's no way)
         if(unlikely(clear_tag_common(tag_entry -> key, tag_entry -> tag_key) != 0)) {
             PRINT
-            printk("%s: Could not deallocate BM and HM for Tag %d.\n", MODNAME, tag_entry -> tag_key);
+            printk("%s: Fatal Error! Could not deallocate BM and HM for Tag %d.\n", MODNAME, tag_entry -> tag_key);
             tags[tag] = tag_entry;
             return -EINTR;
         }
@@ -934,7 +942,7 @@ static tag_level_t* create_level(int i, int epoch) {
     if(unlikely(level == 0)) {
         PRINT
         printk("%s: Could not allocate memory level %d.\n", MODNAME, i);
-        return -ENOMEM;
+        return 0;
     } 
 
     buffer = kzalloc(sizeof(char) * BUFFER_SIZE, GFP_KERNEL);
@@ -942,7 +950,7 @@ static tag_level_t* create_level(int i, int epoch) {
         PRINT
         printk("%s: Could not allocate buffer for level %d\n", MODNAME, i);
         kfree(level);
-        return -ENOMEM;
+        return 0;
     }
     
     level -> level  = i;
@@ -990,9 +998,11 @@ static int clear_tag_common(int key, int tag_key) {
                 MODNAME, entry -> key, entry -> tag_key, key, tag_key);
     }
         
-    if(unlikely(clear_number(tag_bitmask, tag_key) != 1))
+    if(unlikely(clear_number(tag_bitmask, tag_key) != 1)) {
         PRINT
         printk("%s: Critical error! Could not clear %d from bitmask.\n", MODNAME, tag_key);
+        if(key != IPC_PRIVATE) hashmap_set(tag_table, &(tag_table_entry_t){ .key = key, .tag_key = tag_key});
+    }
 
     // Release the lock 
     up_write(&common_lock); 
@@ -1005,7 +1015,6 @@ static int clear_tag_common(int key, int tag_key) {
  *  @brief  Clear all the levels stored in tag_level
  *  
  *  @param  tag_level pointer to the array of the single levels pointers
- *  @param  tag_key Tag Descriptor
  *  
  */ 
 static void clear_tag_level(tag_level_t** tag_level) {
@@ -1043,6 +1052,7 @@ static void print_tag(void){
     tag_t   tag;
     tag_table_entry_t* tag_table_entry;
 
+    printk("%s: Printing all Tags info\n", "PRINT");
    
     for(i = 0; i < MAX_TAGS; i++) {
 
@@ -1058,7 +1068,7 @@ static void print_tag(void){
            
             tag = *tag_ptr;
 
-            printk("%s: Tag struct Key: %d; Tag Key: %d\n\t\tPermission: %d\n\t\tReady: %d; Counter: %d\n", MODNAME, 
+            printk("Key %d; Tag desc %d; Perm %d; Ready %d; Counter %d\n", 
                     tag.key, tag.tag_key, tag.permission, tag.ready, tag.waiting.counter);
 
 
@@ -1075,14 +1085,14 @@ static void print_tag(void){
     }
 
 
-    printk("%s: Hahsmap content: %ld items\n", MODNAME, hashmap_count(tag_table));    
+    printk("%s: Hahsmap content: %ld items\n", "PRINT", hashmap_count(tag_table));    
     
 
     for(i = 0; i < MAX_TAGS; i++) {
 
 
         if(unlikely(down_read_interruptible(&(tag_lock[i])) == -EINTR)) {                
-            PRINT   //METTI tutte le PRINT su OGNI RW lock was interrupted
+            PRINT
             printk("%s: RW Lock was interrupted.\n", MODNAME);
             up_read(&common_lock);
             continue;
@@ -1095,7 +1105,8 @@ static void print_tag(void){
             tag = *tag_ptr;
     
             tag_table_entry = hashmap_get(tag_table, &(tag_table_entry_t){ .key = tag.key});
-            printk("%s: Tag Table Entry: Key: %d; Tag Key: %d\n", MODNAME, 
+            if(tag_table_entry != 0)
+                printk("Key %d; Tag Key %d\n", 
                     tag_table_entry -> key, tag_table_entry -> tag_key);
 
             
@@ -1119,8 +1130,8 @@ static void print_tag(void){
 static void print_level(tag_level_t* tag_level, int tag) {
     
     if(tag_level == 0) return;
-    printk("%s: (%d) Tag: %d, level: %d, epoch: %d, waiting: %d (ready %d)\n\t\t\tsize: %d, buffer: %s \n", 
-        MODNAME, current -> pid, tag, tag_level -> level, tag_level -> epoch, tag_level -> waiting, tag_level -> ready, 
+    printk("%s: TID: %d, Tag: %d, level: %d, epoch: %d, waiting: %d (ready %d) size: %ld, buffer: %s \n", 
+        "PRINT", current -> pid, tag, tag_level -> level, tag_level -> epoch, atomic_read(&(tag_level -> waiting)), tag_level -> ready, 
         tag_level -> size, tag_level -> buffer);
 
 }

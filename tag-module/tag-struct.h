@@ -3,7 +3,7 @@
 
 #define SEED0 401861
 #define SEED1 879023
-#define HASHMAP_CAP 256
+#define HASHMAP_CAP MAX_TAGS * 2
 
 #define BUFFER_SIZE 4096
 #define LEVELS      32
@@ -20,7 +20,6 @@ typedef struct tag_table_entry_struct {
 // Struct used to describe a single level of a Tag Service
 typedef struct tag_level_struct {
     int level;              // Level of the Tag Level                  
-    char* buffer;           // Buffer for message exchange
     size_t size;            // Size of the message
     int ready;              // Signal wether the tag level is occupied in a Tag Send (1) or not (0)
     int epoch;              // Level Epoch (RCU alike)
@@ -29,6 +28,8 @@ typedef struct tag_level_struct {
             local_wq;
     struct rw_semaphore     /* RW Semaphore to synsconize the access to the single level instance*/
             rcu_lock;
+    // Buffer for message exchange
+    char __attribute__((aligned(PAGE_SIZE))) *buffer;                   
     
 } tag_level_t;
 

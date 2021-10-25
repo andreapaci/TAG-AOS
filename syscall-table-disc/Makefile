@@ -13,8 +13,10 @@ else
 obj-m += SCTH.o
 SCTH-objs += scth_module.o ptexplorer/ptexplorer.o arch-common/arch-common.o scth_discovery.o ../utils/hash-struct/hashmap.o ../utils/bitmask/bitmask.o
 
+ccflags-y += -Wno-declaration-after-statement -Wno-implicit-fallthrough
+
 ifeq ($(MOD_DEBUG), 1)
-ccflags-y += -DAUDIT
+ccflags-y += -DAUDIT 
 endif
 ifeq ($(TEST_SYSCALL), 1)
 ccflags-y += -DTEST_SYSCALL
