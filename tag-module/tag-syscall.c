@@ -10,7 +10,6 @@
 static int  add_tag_level(tag_level_t** tag_level);
 static tag_level_t* create_level(int i, int epoch);
 static int clear_tag_common(int key, int tag_key);
-static void clear_tag_level(tag_level_t** tag_level);
 __always_inline static void free_level(tag_level_t* tag_level);
 static void print_tag(void);
 static void print_level(tag_level_t* tag_level, int tag);
@@ -282,7 +281,7 @@ int tag_send(int tag, int level, char* buffer, size_t size) {
     }
 
     // Root can always access
-    if(tag_entry -> permission == TAG_PERM_USR && current_euid().val != 0 && tag_entry -> euid != current_euid().val) {
+    if(CHECKPERM(tag_entry)) {
         PRINT
         printk("%s: Could not access the Tag service %d: permission error\n", MODNAME, tag);
         up_read(&(tag_lock[tag]));
@@ -342,6 +341,15 @@ int tag_send(int tag, int level, char* buffer, size_t size) {
         return 0;
     }
 
+    // Try to acquire mutex(if fails, it means some else is writing)
+    if(!mutex_trylock(&(tag_level -> w_mutex))) {
+        PRINT
+        printk("%s: Tag %d on level %d is contended/occupied.\b", MODNAME, tag, level);
+        up_read(&(tag_level -> rcu_lock));
+        up_read(&(tag_lock[tag]));
+        return 0;
+    }
+
     // Only if size is > 0 the copy goes on, otherwise, just wake up
     if(size > 0) {
         // Copy of the buffer
@@ -350,6 +358,7 @@ int tag_send(int tag, int level, char* buffer, size_t size) {
             printk("%s: Error in copying message from userspace\n", MODNAME);
             up_read(&(tag_level -> rcu_lock));
             up_read(&(tag_lock[tag]));
+            mutex_unlock(&(tag_level -> w_mutex));
             return -EFAULT;
         }
     }
@@ -361,6 +370,9 @@ int tag_send(int tag, int level, char* buffer, size_t size) {
     print_level(tag_level, tag);
 
     tag_level -> ready = 1;
+    
+    mutex_unlock(&(tag_level -> w_mutex));
+    
     wake_up_all(&(tag_level -> local_wq));
 
     up_read(&(tag_level -> rcu_lock));
@@ -388,7 +400,7 @@ int tag_send(int tag, int level, char* buffer, size_t size) {
  *  @param  buffer memory position to store the message 
  *  @param  size size of the buffer
  * 
- *  @return 1 on success, 0 if interrupted while waiting, negative error codes otherwise
+ *  @return 1 on success, 0 if interrupted while waiting or Awake_All, negative error codes otherwise
  */
 int tag_receive(int tag, int level, char* buffer, size_t size) { 
 
@@ -423,15 +435,14 @@ int tag_receive(int tag, int level, char* buffer, size_t size) {
         return -ENODATA;
     }
 
-    // Root can always access
-    if(tag_entry -> permission == TAG_PERM_USR && current_euid().val != 0 && tag_entry -> euid != current_euid().val) {
+
+    if(CHECKPERM(tag_entry)) {
         PRINT
         printk("%s: Could not access the Tag service %d: permission error\n", MODNAME, tag);
         up_read(&(tag_lock[tag]));
         return -EPERM;
     }
     
-    // Fare check atomici se dobbiamo saltare di epoca oppure il livello non è ancora stato creato
     if(unlikely(down_read_interruptible(&(tag_entry -> level_lock[level])) == -EINTR)) {                
         PRINT
         printk("%s: RW Lock was interrupted.\n", MODNAME);
@@ -472,6 +483,8 @@ int tag_receive(int tag, int level, char* buffer, size_t size) {
 
 
     // If the specified tag level has a send already, create a new epoch level and register on that one
+
+   
     if(tag_level -> ready == 1) {
 
         PRINT
@@ -549,6 +562,8 @@ int tag_receive(int tag, int level, char* buffer, size_t size) {
             tag_level = new_tag_level;
         }
 
+        up_read(temp_sem);
+
         //Instantly take the new tag level RCU lock (Since the thread has moved to a next version of the level)
         if(unlikely(down_read_interruptible(&(tag_level -> rcu_lock)) == -EINTR)) {                
             PRINT
@@ -559,7 +574,6 @@ int tag_receive(int tag, int level, char* buffer, size_t size) {
             up_write(&(tag_entry -> level_lock[level]));
             if(atomic_dec_and_test(&(tag_entry -> waiting))) 
                 tag_entry -> ready = 0;
-            up_read(temp_sem);
             up_read(&(tag_lock[tag]));
             
             return -EINTR;
@@ -567,7 +581,7 @@ int tag_receive(int tag, int level, char* buffer, size_t size) {
 
         up_write(&(tag_entry -> level_lock[level]));
 
-        up_read(temp_sem);
+        
         
     }
     
@@ -587,7 +601,10 @@ int tag_receive(int tag, int level, char* buffer, size_t size) {
     print_level(tag_level, tag);
 
     // When return_code == 0 it means it has been woken up, otherwise it was an interrupt
-    if(return_code == 0) return_code = 1;
+    if(return_code == 0) {
+        if(tag_entry -> ready) return_code = 0;
+        else if(tag_level -> ready) return_code = 1;
+    }
     else return_code = 0;
 
     // If the return code is 1 it means it has been woken up by a "wake_up" call, and if tag_level -> ready == 1 it means there's
@@ -610,17 +627,13 @@ int tag_receive(int tag, int level, char* buffer, size_t size) {
     //If the thread is the last one reading from the level
     if(atomic_dec_and_test(&(tag_level -> waiting))) {
 
-        if(unlikely(down_write_killable(&(tag_level -> rcu_lock)) == -EINTR)) {                
-            PRINT
-            printk("%s: RW Lock was interrupted.\n", MODNAME);   
-            
-            if(atomic_dec_and_test(&(tag_entry -> waiting))) 
-                tag_entry -> ready = 0;
-            up_read(&(tag_lock[tag]));
-            return -EINTR;
-        }
+        while(!down_write_trylock(&(tag_level -> rcu_lock))) {
+            schedule();
+        } 
         
+
         tag_level_t* new_tag_level;
+
         new_tag_level = (tag_entry -> tag_level)[level];
         if(unlikely(new_tag_level == 0)){
             PRINT
@@ -633,21 +646,22 @@ int tag_receive(int tag, int level, char* buffer, size_t size) {
             return -EPROTO;
         }
 
-        // If a next epoch exists it's possible to free the level
+
+        // If a next epoch exists it's possible to free the level...
         if(new_tag_level -> epoch > tag_level -> epoch) {
             PRINT {
                 printk("%s: Deleting Tag %d Level %d of epoch %d\n", MODNAME, tag, level, tag_level -> epoch);
-                print_level(tag_level, tag);
+                //print_level(tag_level, tag);
             }
             up_write(&(tag_level -> rcu_lock));
             free_level(tag_level);
-
             
         
         } else { 
+            // ... otherwise, the level gets re-initialized, 0-ing the values for the next send/receive
             PRINT {
                 printk("%s: Clearing Tag %d Level %d of epoch %d\n", MODNAME, tag, level, tag_level -> epoch);
-                print_level(tag_level, tag);
+                //print_level(tag_level, tag);
             }
             //If a new tag level epoch doesn't exists set level_ready to 0 (the level is not used anymore)
             tag_level -> ready = 0;
@@ -661,6 +675,8 @@ int tag_receive(int tag, int level, char* buffer, size_t size) {
 
             up_write(&(tag_level -> rcu_lock));
         }
+
+        
 
        
     }
@@ -729,7 +745,7 @@ int tag_ctl(int tag, int command) {
         }
 
         // Root can always access
-        if(tag_entry -> permission == TAG_PERM_USR && current_euid().val != 0 && tag_entry -> euid != current_euid().val) {
+        if(CHECKPERM(tag_entry)) {
             PRINT
             printk("%s: Could not access the Tag service %d: permission error\n", MODNAME, tag);
             up_read(&(tag_lock[tag]));
@@ -765,6 +781,7 @@ int tag_ctl(int tag, int command) {
                 up_read(&(tag_lock[tag]));
                 return -EINTR;
             }
+           
 
             tag_level = (tag_entry -> tag_level)[i];
 
@@ -834,7 +851,7 @@ int tag_ctl(int tag, int command) {
         }
 
         // Root can always access
-        if(tag_entry -> permission == TAG_PERM_USR && current_euid().val != 0 && tag_entry -> euid != current_euid().val) {
+        if(CHECKPERM(tag_entry)) {
             PRINT
             printk("%s: Could not access the Tag service %d: permission error\n", MODNAME, tag);
             up_write(&(tag_lock[tag]));
@@ -897,7 +914,7 @@ int tag_ctl(int tag, int command) {
 
 
 
-
+// Some helper function
 
 
 
@@ -961,6 +978,7 @@ static tag_level_t* create_level(int i, int epoch) {
     atomic_set(&(level -> waiting), 0);
     init_waitqueue_head(&(level -> local_wq));
     init_rwsem(&(level -> rcu_lock));
+    mutex_init(&(level -> w_mutex));
 
     return level;
 
@@ -1017,7 +1035,7 @@ static int clear_tag_common(int key, int tag_key) {
  *  @param  tag_level pointer to the array of the single levels pointers
  *  
  */ 
-static void clear_tag_level(tag_level_t** tag_level) {
+void clear_tag_level(tag_level_t** tag_level) {
 
     int i;
     for(i = 0; i < LEVELS; i++) 
@@ -1157,28 +1175,56 @@ static void print_level(tag_level_t* tag_level, int tag) {
 
 
 __SYSCALL_DEFINEx(3, _tag_get, int, key, int, command, int, permission){ 
-        return tag_get(key, command, permission);
+        int ret_val;
+        if(!try_module_get(THIS_MODULE)) {
+            printk("%s: Fatal Error: could not lock module!", MODNAME);
+            return -1;
+        }
+        ret_val = tag_get(key, command, permission);
+        module_put(THIS_MODULE);
+        return ret_val;
 }
 
 unsigned long sys_tag_get;
 
 
 __SYSCALL_DEFINEx(4, _tag_send, int, tag, int, level, char*, buffer, size_t, size) {
-        return tag_send(tag, level, buffer, size);
+        int ret_val;
+        if(!try_module_get(THIS_MODULE)) {
+            printk("%s: Fatal Error: could not lock module!", MODNAME);
+            return -1;
+        }
+        ret_val = tag_send(tag, level, buffer, size);
+        module_put(THIS_MODULE);
+        return ret_val;
 }
 
 unsigned long sys_tag_send;    
 
 
 __SYSCALL_DEFINEx(4, _tag_receive, int, tag, int, level, char*, buffer, size_t, size) {
-        return tag_receive(tag, level, buffer, size);
+        int ret_val;
+        if(!try_module_get(THIS_MODULE)) {
+            printk("%s: Fatal Error: could not lock module!", MODNAME);
+            return -1;
+        }
+        ret_val = tag_receive(tag, level, buffer, size);
+        module_put(THIS_MODULE);
+        return ret_val;
 }
 
 unsigned long sys_tag_receive;    
 
 
 __SYSCALL_DEFINEx(2, _tag_ctl, int, tag, int, command) {
-        return tag_ctl(tag, command);
+        int ret_val;
+        if(!try_module_get(THIS_MODULE)) {
+            printk("%s: Fatal Error: could not lock module!", MODNAME);
+            return -1;
+        }
+        ret_val = tag_ctl(tag, command);
+        module_put(THIS_MODULE);
+        return ret_val;
 }
 
 unsigned long sys_tag_ctl;    

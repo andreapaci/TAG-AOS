@@ -73,11 +73,17 @@ else
         # Compile and run TAG module tester
         make test_tag_sys
 
+        printf "\n\nNote: it will be now opened a new terminal (gnome-terminal as Ubuntu default) and it will\n"
+        printf "      run a program which will read from the Char Device created along with the module\n"
+        read -p "Press Enter to continue"
+
+        sudo gnome-terminal -- './test_char_dev.o'
+
         printf "\n\n______________________________________________________\n"
         printf "Running TAG Module testing using only single CPU\n"
         printf "______________________________________________________\n\n"
 
-        #taskset --cpu-list 1 ./test_tag.o
+        sudo taskset --cpu-list 1 ./test_tag.o
         printf "\n\n______________________________________________________\n"
         printf "End test single CPU\n"
         printf "______________________________________________________\n\n"
@@ -86,7 +92,7 @@ else
         printf "Running TAG Module testing multiple CPUs\n"
         printf "______________________________________________________\n\n"
 
-        ./test_tag.o
+        sudo ./test_tag.o
         printf "\n\n______________________________________________________\n"
         printf "End test multiple CPUs\n"
         printf "______________________________________________________\n\n"

@@ -1,3 +1,10 @@
+/**
+ *  @file   tag_struct.c
+ *  @brief  Header file with the definition of some of the struct used in the module
+ *  @author Andrea Paci
+ */ 
+
+
 #include <linux/rwsem.h>
 #include "include/tag.h"
 
@@ -9,9 +16,9 @@
 #define LEVELS      32
 #define MAX_TAGS    256
 
-#define WAIT_TIMEOUT 1000
+#define CHECKPERM(tag_entry) (tag_entry -> permission == TAG_PERM_USR && current_euid().val != 0 && tag_entry -> euid != current_euid().val)
 
-
+// Single entry og the Hashmap
 typedef struct tag_table_entry_struct {
     int key;
     int tag_key;
@@ -28,6 +35,7 @@ typedef struct tag_level_struct {
             local_wq;
     struct rw_semaphore     /* RW Semaphore to synsconize the access to the single level instance*/
             rcu_lock;
+    struct mutex w_mutex;   // Mutex used to block concurrent send   
     // Buffer for message exchange
     char __attribute__((aligned(PAGE_SIZE))) *buffer;                   
     

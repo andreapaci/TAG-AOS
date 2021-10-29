@@ -11,7 +11,7 @@ clean:
 	$(MAKE) -C /lib/modules/$(shell uname -r)/build M=$(PWD) clean
 else
 obj-m += TAGMOD.o
-TAGMOD-objs += tag-module.o tag-syscall.o ../utils/hash-struct/hashmap.o ../utils/bitmask/bitmask.o
+TAGMOD-objs += tag-module.o tag-syscall.o tag-dev-driver.o ../utils/hash-struct/hashmap.o ../utils/bitmask/bitmask.o
 KBUILD_EXTRA_SYMBOLS := $(PWD)/../syscall-table-disc/Module.symvers
 
 ccflags-y += -Wno-declaration-after-statement -Wno-implicit-fallthrough

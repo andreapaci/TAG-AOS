@@ -5,7 +5,7 @@
  */ 
 
 
-#include "module.h"
+#include "tag-dev-driver.h"
 
 
 MODULE_LICENSE("GPL");
@@ -76,10 +76,10 @@ int init_module(void) {
         free_bitmask(tag_bitmask);
         tag_bitmask = 0;
 
-
-
         return -1;
     }
+
+    register_chardev();
 
     
 
@@ -115,7 +115,7 @@ static int initialize(void) {
     }
 
     // Initialize Tag pointer
-    tags = kzalloc(sizeof(tag_t*) * MAX_TAGS, GFP_ATOMIC);
+    tags = kzalloc(sizeof(tag_t*) * MAX_TAGS, GFP_KERNEL);
     if(tags == 0) {
         printk("%s: Error in creating TAG buffer\n", MODNAME);
         
@@ -162,6 +162,20 @@ void cleanup_module(void) {
         free_bitmask(tag_bitmask);
     if(tag_table != 0)
         hashmap_free(tag_table);
-    if(tags != 0)
+    if(tags != 0) {
+        int i;
+        // There's no risk in removing all instances of the Tag services since every system call increase the 
+        // usage counter, so it's not possible to cleanup the module while using one of its system call
+        for(i = 0; i < MAX_TAGS; i++) {
+            if(tags[i] != 0) {
+                clear_tag_level(tags[i] -> tag_level);
+                kfree(tags[i] -> tag_level);
+                kfree(tags[i]);
+            }
+        }
+
         kfree(tags);
+    }
+
+    unregister_chardev();
 }

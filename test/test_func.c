@@ -1,3 +1,16 @@
+/**
+ *  @file   test_funct.c
+ *  @brief  Source code for testing the basic functionalities of the two struct used: Hashmap and Bitmask.
+ *          This routine gets is independent from the modules developed
+ *          It contains functionality tests on the Hashmap and Bitmask, containing also a basic performance measurement
+ *              [NOTE] this routine is not involved in any manner in the project requirement: it has been developed only for "internal use"
+ *              to check wether the structures work as intended and if no unexpected behaviour comes from using them,
+ *              so the routine has not been developed with particular care regarding code style and shape.
+ *              The tests contains a basic "assertion functionalities" to check if the returned value is coherent with
+ *              what is expected to happen. If not, it exits the test with an error code (-1) 
+ *  @author Andrea Paci
+ */ 
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <malloc.h>
@@ -40,6 +53,10 @@ int test_bitmask(void) {
 
     bitmask_t* mask;
 
+    // Test basic bitmask initialization to check "borderline values" of bits on the bitmask
+    // Note: 64 is a borderline value since the bitmask is made of "unisgned long long slots", so once
+    //       the bitmask size reaches 65, it should use 2 slots instead of one  
+
     mask = initialize_bitmask(0);
 
     if(mask == 0) printf("[TEST_FUNC] Error initalizing mask with size 0, Correct!\n");
@@ -50,7 +67,6 @@ int test_bitmask(void) {
     if(mask == 0) printf("[TEST_FUNC] Error initalizing mask with size -1, Correct!\n");
     else return -1;
 
-    // NOTE: Automate this TEST FROM HERE --------------------------------
     mask = initialize_bitmask(1);
     if(mask == 0) return -1;
     
@@ -59,10 +75,8 @@ int test_bitmask(void) {
     if(mask -> slots == 1 && mask -> n_bits == 1) printf("[TEST_FUNC] Correct!\n");
     else{ printf("[TEST_FUNC] Wrong!\n"); return -1; }
 
-    
     free_bitmask(mask);
     
-
 
     mask = initialize_bitmask(63);
     if(mask == 0) return -1;
@@ -73,8 +87,6 @@ int test_bitmask(void) {
     else{ printf("[TEST_FUNC] Wrong!\n"); return -1; }
     
     free_bitmask(mask);
-
-
 
 
     mask = initialize_bitmask(64);
@@ -88,7 +100,6 @@ int test_bitmask(void) {
     free_bitmask(mask);
 
 
-
     mask = initialize_bitmask(65);
     if(mask == 0) return -1;
     
@@ -99,13 +110,15 @@ int test_bitmask(void) {
     
     free_bitmask(mask);
 
-    // TO HERE ------------------------------------------------------------
 
 
 
 
+    
 
 
+    // Testing several add/removal of bits in the bitmask, with the relative print of debug information
+    // to check if the mask is updated as intended.
 
 
 
@@ -251,6 +264,10 @@ int test_bitmask(void) {
 
 
 
+    // Test clearing un-used bitmask number
+
+
+
     printf("\n[TEST_FUNC] Clearing numbers\n");
 
     if(clear_number(mask, 12) != 0) {
@@ -290,6 +307,9 @@ int test_bitmask(void) {
 
     
     
+
+
+    // Test maximum number retrival from the bitmask with a simple performance measurement
     
     
     printf("\n[TEST_FUNC] Test Maximum numbers allowed!\n");
@@ -325,6 +345,9 @@ int test_bitmask(void) {
     
     }
 
+    // Trying to get a new number over the maximum allowed
+
+
     number = get_avail_number(mask);
     if(number != -1){ 
         printf("[TEST_FUNC] Error in getting new number: %d\n", number);
@@ -348,6 +371,13 @@ int test_bitmask(void) {
     printf("[TEST_FUNC] Number: %d, Mask: %llu, Mask#2: %llu\n", number, *((mask -> mask) + 1), *(mask -> mask));
 
     free_bitmask(mask);
+
+
+
+
+
+
+    // Test add/removal of bits with multiple slots involved
 
 
 
@@ -586,6 +616,12 @@ int test_bitmask(void) {
 
 }
 
+
+
+
+// Struct and custom function used for the Hashmap
+
+
 typedef struct data { 
     int key;
     char* buffer;
@@ -604,7 +640,8 @@ uint64_t custom_hash(const void *item, uint64_t seed0, uint64_t seed1 ) {
 
 int test_hashmap(void) {
 
-    // Initialize hashmap which stores string (char[16])
+    // Initialize hashmap which stores "data" object type
+
     struct hashmap* map = hashmap_new_with_allocator(
         malloc, 0, free, sizeof(data), 
         HASHMAP_CAP, SEED0, SEED1, 
@@ -620,8 +657,10 @@ int test_hashmap(void) {
 
     printf("[TEST_FUNC] Value: %d, %s\n", data_ins.key, data_ins.buffer);
 
-
     printf("[TEST_FUNC] Hashmap initalized\n");
+
+
+    // Test some set/get/delete on the hashmap and see if the structures get's updated coherently
 
     hashmap_set(map, &data_ins);
 
@@ -715,6 +754,12 @@ int test_hashmap(void) {
     printf("[TEST_FUNC] Testing 260 values\n");
 
     hashmap_set(map, &(data){ .key=2, .buffer="chiave2"});
+
+
+
+
+    // Basic performance Test
+
 
     int tries, i;
     tries = 1556;

@@ -45,6 +45,8 @@ __SYSCALL_DEFINEx(2, _trial, unsigned long, A, unsigned long, B){
     }
 
 unsigned long sys_trial;    
+
+
 #endif  
 
 
@@ -108,7 +110,13 @@ void cleanup_module(void) {
 static __always_inline void *alloc(size_t size) { return kzalloc(size, GFP_KERNEL); }
 static __always_inline void dealloc(void* obj) { kfree(obj); }
 
-
+// This routine gets installed as a dummy system call to test the correct functionality of the module system call insertion procedure
+// It contains functionality tests on the Hashmap and Bitmask, containing also a basic performance measurement
+// NOTE: this routine is not involved in any manner in the project requirement: it has been developed only for "internal use"
+// to check wether the module runs fine and if no unexpected behaviour comes from using the Hashmap and Bitmask in a Kernel memory space,
+// so the routine has not been developed with particular care regarding code style and shape.
+// NOTE #2: the test performed is the same as the one in "test/test_func.c" with only some minor differences in memory allocation
+// and other small details.
 void test_syscall(void) {
 
     printk("[TEST_FUNC]: Testing\n");
@@ -132,6 +140,10 @@ int test_bitmask(void) {
 
     bitmask_t* mask = initialize_bitmask(0);
 
+    // Test basic bitmask initialization to check "borderline values" of bits on the bitmask
+    // Note: 64 is a borderline value since the bitmask is made of "unisgned long long slots", so once
+    //       the bitmask size reaches 65, it should use 2 slots instead of one  
+
     if(mask == 0) printk("[TEST_FUNC]: Error initalizing mask with size 0, Correct!\n");
     else return -1;
 
@@ -148,11 +160,9 @@ int test_bitmask(void) {
                 mask -> slots, mask -> n_bits);
     if(mask -> slots == 1 && mask -> n_bits == 1) printk("[TEST_FUNC]: Correct!\n");
     else{ printk("[TEST_FUNC]: Wrong!\n"); return -1; }
-
-    
+ 
     free_bitmask(mask);
     
-
 
     mask = initialize_bitmask(63);
     if(mask == 0) return -1;
@@ -165,8 +175,6 @@ int test_bitmask(void) {
     free_bitmask(mask);
 
 
-
-
     mask = initialize_bitmask(64);
     if(mask == 0) return -1;
     
@@ -176,7 +184,6 @@ int test_bitmask(void) {
     else{ printk("[TEST_FUNC]: Wrong!\n"); return -1; }
     
     free_bitmask(mask);
-
 
 
     mask = initialize_bitmask(65);
@@ -196,7 +203,8 @@ int test_bitmask(void) {
 
 
 
-
+    // Testing several add/removal of bits in the bitmask, with the relative print of debug information
+    // to check if the mask is updated as intended.
 
     printk("\n[TEST_FUNC]: Getting new avaliable numbers\n");
     
@@ -338,6 +346,8 @@ int test_bitmask(void) {
 
 
 
+    // Test clearing un-used bitmask number
+
 
 
     printk("\n[TEST_FUNC]: Clearing numbers\n");
@@ -379,6 +389,8 @@ int test_bitmask(void) {
 
     
     
+
+    // Test maximum number retrival from the bitmask with a simple performance measurement.
     
     
     printk("\n[TEST_FUNC]: Test Maximum numbers allowed!\n");
@@ -415,6 +427,8 @@ int test_bitmask(void) {
     
     }
 
+    // Trying to get a new number over the maximum allowed
+
     number = get_avail_number(mask);
     if(number != -1){ 
         printk("[TEST_FUNC]: Error in getting new number: %d\n", number);
@@ -438,6 +452,14 @@ int test_bitmask(void) {
     printk("[TEST_FUNC]: Number: %d, Mask: %llu, Mask#2: %llu\n", number, *((mask -> mask) + 1), *(mask -> mask));
 
     free_bitmask(mask);
+
+
+
+
+
+
+
+    // Test add/removal of bits with multiple slots involved
 
 
 
@@ -677,6 +699,11 @@ int test_bitmask(void) {
 
 }
 
+
+
+
+// Struct and custom function used for the Hashmap
+
 typedef struct data { 
     int key;
     char* buffer;
@@ -695,7 +722,8 @@ uint64_t custom_hash(const void *item, uint64_t seed0, uint64_t seed1 ) {
 
 int test_hashmap(void) {
 
-    // Initialize hashmap which stores string (char[16])
+    // Initialize hashmap which stores "data" object type
+
     struct hashmap* map = hashmap_new_with_allocator(
         alloc, 0, dealloc, sizeof(data), 
         HASHMAP_CAP, SEED0, SEED1, 
@@ -711,8 +739,11 @@ int test_hashmap(void) {
 
     printk("[TEST_FUNC]: Value: %d, %s\n", data_ins.key, data_ins.buffer);
 
-
     printk("[TEST_FUNC]: Hashmap initalized\n");
+
+
+    // Test some set/get/delete on the hashmap and see if the structures get's updated coherently
+
 
     hashmap_set(map, &data_ins);
 
@@ -807,10 +838,15 @@ int test_hashmap(void) {
 
     hashmap_set(map, &(data){ .key=2, .buffer="chiave2"});
 
+
+
+
+    // Basic performance Test
+
+
     int tries, i;
     tries = 1556;
     i = 1;
-    
 
     preempt_disable();
 
@@ -873,10 +909,6 @@ int test_hashmap(void) {
     printk("[TEST_FUNC]: Test Hashmap executed correctly!\n");
 
     return 0;
-
-
-
-
 
 }
 

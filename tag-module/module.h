@@ -24,6 +24,7 @@
 #include <linux/init.h>
 #include <linux/workqueue.h>
 #include <linux/delay.h>
+#include <linux/version.h>
 
 
 #include "../syscall-table-disc/include/syscall-handle.h"
@@ -46,7 +47,10 @@
 
 
 
-#define MODNAME "TAG-MOD"
+#define MODNAME     "TAG-MOD"
+#define DEV_NAME    "tag_info"
+// Size of the buffer used to read from the char device
+#define CHAR_BLOCK  PAGE_SIZE
 
 extern hashmap_t*           tag_table;
 extern bitmask_t*           tag_bitmask;
@@ -62,3 +66,4 @@ extern int tag_ctl_nr;
 
 
 int install_syscalls(void);
+void clear_tag_level(tag_level_t** tag_level);
