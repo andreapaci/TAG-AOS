@@ -49,8 +49,7 @@
 
 #define MODNAME     "TAG-MOD"
 #define DEV_NAME    "tag_info"
-// Size of the buffer used to read from the char device
-#define CHAR_BLOCK  PAGE_SIZE
+
 
 extern hashmap_t*           tag_table;
 extern bitmask_t*           tag_bitmask;

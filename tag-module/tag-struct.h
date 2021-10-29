@@ -1,6 +1,6 @@
 /**
  *  @file   tag_struct.c
- *  @brief  Header file with the definition of some of the struct used in the module
+ *  @brief  Header file with the definition of some of the struct used in the module and some constants
  *  @author Andrea Paci
  */ 
 
