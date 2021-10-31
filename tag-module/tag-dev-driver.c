@@ -97,6 +97,7 @@ static ssize_t dev_read(struct file* filp, char* buf, size_t size, loff_t *off) 
     int i, j;
     int tag_key, euid;
     int nbytes, curr_block;
+    loff_t relative_off;
     char __attribute__((aligned(PAGE_SIZE))) *buffer;
     
     // Since header and divider are always used, there's no point in allocating and filling them every read
@@ -116,6 +117,7 @@ static ssize_t dev_read(struct file* filp, char* buf, size_t size, loff_t *off) 
     if(size <= 0) return 0;
     if(buf == 0 || (*off) < 0)  return -1;  
     
+    relative_off = *off;
 
     // Allocate buffer used to store the output
     // + 1 is \0
@@ -186,6 +188,13 @@ static ssize_t dev_read(struct file* filp, char* buf, size_t size, loff_t *off) 
             continue;
         }
 
+        // If the offset is greater than the Tag size, there's no point in reading this
+        if(relative_off > TAG_SIZE) {
+            relative_off -= TAG_SIZE;
+            up_read(&(tag_lock[i]));
+            continue;
+        }
+
         // Store the KEY and the EUID
         tag_key = tag_entry -> key;
         euid = tag_entry -> euid;
@@ -252,7 +261,7 @@ static ssize_t dev_read(struct file* filp, char* buf, size_t size, loff_t *off) 
 
             // If reached the maximum bytes to be read, stop and send the message
             // to the user buffer
-            if(nbytes > size + *off) {
+            if(nbytes > size + relative_off) { //*off) {
                 up_read(&(tag_lock[i]));
                 goto exit;
             }
@@ -285,19 +294,19 @@ static ssize_t dev_read(struct file* filp, char* buf, size_t size, loff_t *off) 
     
     
     // In case the offset is greater than the total size, must return 0
-    if(tot_size <= (*off)) {
+    if(tot_size <= relative_off) { //(*off)) {
         kfree(divider);
         vfree(buffer);
         return 0;
     }
 
 
-    if(size > tot_size - (*off))
-        size = tot_size - (*off);    
+    if(size > tot_size - relative_off) //(*off))
+        size = tot_size - relative_off; //(*off);    
 
 
     char* cpy_buffer;
-    cpy_buffer = buffer + (*off);
+    cpy_buffer = buffer + relative_off; //(*off);
 
     if(unlikely(copy_to_user(buf, cpy_buffer, size) != 0)) {
         PRINT

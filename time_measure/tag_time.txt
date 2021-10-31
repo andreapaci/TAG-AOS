@@ -1,0 +1,257 @@
+Testing a 1 sender 100 receivers situation (TID 155996)
+
+
+0.001153
+0.001134
+0.001216
+0.001179
+0.001255
+
+
+
+Testing a 1 sender 200 receivers situation (TID 155996)
+
+
+
+
+0.002206
+0.002311
+0.002185
+0.002218
+0.002526
+
+
+
+Testing a 1 sender 300 receivers situation (TID 155996)
+
+
+
+0.003704
+0.003922
+0.003744
+0.003236
+0.003655
+
+
+
+Testing a 1 sender 400 receivers situation (TID 155996)
+
+
+
+
+0.004958
+0.004956
+0.004968
+0.005017
+0.005217
+
+
+
+Testing a 1 sender 500 receivers situation (TID 155996)
+
+
+
+
+0.006302
+0.006243
+0.006280
+0.007195
+0.006426
+
+
+
+Testing a 1 sender 600 receivers situation (TID 155996)
+
+
+
+
+0.007477
+0.007550
+0.007428
+0.007605
+0.007813
+
+
+
+Testing a 1 sender 700 receivers situation (TID 155996)
+
+
+
+
+0.008713
+0.008832
+0.008671
+0.009948
+0.009065
+
+
+
+Testing a 1 sender 800 receivers situation (TID 155996)
+
+
+
+
+
+0.010270
+0.010034
+0.009963
+0.010460
+0.010285
+
+
+
+Testing a 1 sender 900 receivers situation (TID 155996)
+
+
+
+
+
+0.011404
+0.012200
+0.011545
+0.011423
+0.011329
+
+
+
+Testing a 1 sender 1000 receivers situation (TID 155996)
+
+
+
+
+
+0.013575
+0.012757
+0.012717
+0.013896
+0.012590
+
+
+
+Testing a 1 sender 1100 receivers situation (TID 155996)
+
+
+
+
+
+0.014959
+0.013754
+0.014197
+0.014122
+0.015250
+
+
+
+Testing a 1 sender 1200 receivers situation (TID 155996)
+
+
+
+
+
+0.015661
+0.014410
+0.014964
+0.017857
+0.015114
+
+
+
+Testing a 1 sender 1300 receivers situation (TID 155996)
+
+
+
+
+0.019320
+0.016943
+0.017818
+0.017282
+0.017710
+
+
+
+Testing a 1 sender 1400 receivers situation (TID 155996)
+
+
+
+
+
+0.019172
+0.018201
+0.018636
+0.018392
+0.018498
+
+
+
+Testing a 1 sender 1500 receivers situation (TID 155996)
+
+
+
+
+
+0.020407
+0.019933
+0.019202
+0.019696
+0.022918
+
+
+
+Testing a 1 sender 1600 receivers situation (TID 155996)
+
+
+
+
+0.021306
+0.020728
+0.021333
+0.021667
+0.020504
+
+
+
+Testing a 1 sender 1700 receivers situation (TID 155996)
+
+
+
+
+ 0.022183
+ 0.022497
+ 0.023780
+ 0.022790
+ 0.023519
+
+
+Testing a 1 sender 1800 receivers situation (TID 155996)
+
+
+
+
+
+0.026205
+0.022101
+0.024467
+0.026466
+0.026104
+
+
+
+Testing a 1 sender 1900 receivers situation (TID 155996)
+
+
+
+
+
+0.026835
+0.025096
+0.025046
+0.026431
+0.024902
+
+
+
+
+
+
+
+

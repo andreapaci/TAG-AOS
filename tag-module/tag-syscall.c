@@ -486,9 +486,9 @@ int tag_receive(int tag, int level, char* buffer, size_t size) {
     // since it will enter in the next if, and will get as tag_level the updated version (new epoch one)
 
 
+
     // If the specified tag level has a send already, create a new epoch level and register on that one
     if(tag_level -> ready == 1) {
-
         PRINT
         printk("%s: Creating new Level Epoch (Tag: %d, Level: %d)\n", MODNAME, tag, level);
 

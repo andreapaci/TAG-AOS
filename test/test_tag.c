@@ -26,6 +26,8 @@
 #include <errno.h>
 #include <malloc.h>
 #include <string.h>
+#include <time.h>
+#include <sys/time.h>
 #include <sys/syscall.h>
 #include "tag.h"
 
@@ -33,6 +35,8 @@
 #ifndef SYS_gettid
 #error "SYS_gettid unavailable on this system"
 #endif
+
+#define TEST_TIME if(1)
 
 #define SEPAR printf("-------------------------------------------------------------------\n"); 
 #define gettid() ((pid_t)syscall(SYS_gettid))
@@ -60,6 +64,7 @@ int test_busy_ctl_interrupt();
 int test_basic_read_write(size_t read_size, size_t send_size);
 int test_permissions();
 int test_stress(int tags, int levels, int senders, int receivers, int iterations);
+int test_time(int receivers, int try);
 
 
 void interrupt_handler(int sig){
@@ -78,66 +83,80 @@ int main(int argc, char** argv) {
     printf("Testing various Tag functionality.\n(Most of the debugging output will be visible with 'dmesg')\nPress Enter to continue...\n\n");
     getchar();
 
-    SEPAR    
-    printf("Test with tag_get() and tag_ctl() (delete). Press Enter to continue...\n");
-    getchar();
+    TEST_TIME {
 
-    if(!test_tag_get()) return -1;
+        SEPAR    
+        printf("Test with tag_get() and tag_ctl() (delete). Press Enter to continue...\n");
+        getchar();
 
-    printf("Test with tag_get() and tag_ctl() (delete) executed Succesfully!\n(check 'dmesg' for log if needed and possibly clear the log)\n\n");
-    
+        if(!test_tag_get()) return -1;
 
-    SEPAR
-    printf("Test with tag_get() and IPC_PRIVATE. Press Enter to continue...\n");
-    getchar();
-
-    if(!test_ipc_private()) return -1;
-
-    printf("Test with tag_get() and IPC_PRIVATE executed Succesfully!\n(check 'dmesg' for log if needed and possibly clear the log)\n\n");
-    
-    
-    SEPAR
-    printf("Test with tag_ctl()/Interrupt signal on occupied level. Press Enter to continue...\n");
-    getchar();
-    
-    if(!test_busy_ctl_interrupt()) return -1;
-
-    printf("Test with tag_ctl()/Interrupt signal on occupied level executed Succesfully!\n(check 'dmesg' for log if needed and possibly clear the log)\n\n");
-    
-
-    SEPAR
-    printf("Test with basic send/receive. Press Enter to continue...\n");
-    getchar();
-
-    if(!test_basic_read_write(11, 11)) return -1;
-
-    printf("Test with basic send/receive executed Succesfully!\n(check 'dmesg' for log if needed and possibly clear the log)\n\n");
-    
-    
-
-    SEPAR
-    printf("Test with different EUID! Press Enter to continue...");
-    getchar();
-
-    if(!test_permissions()) {
+        printf("Test with tag_get() and tag_ctl() (delete) executed Succesfully!\n(check 'dmesg' for log if needed and possibly clear the log)\n\n");
         
-        seteuid(0);
-        system("sudo userdel -f test_user1");
-        system("sudo userdel -f test_user2");
 
-        return -1;
+        SEPAR
+        printf("Test with tag_get() and IPC_PRIVATE. Press Enter to continue...\n");
+        getchar();
+
+        if(!test_ipc_private()) return -1;
+
+        printf("Test with tag_get() and IPC_PRIVATE executed Succesfully!\n(check 'dmesg' for log if needed and possibly clear the log)\n\n");
+        
+        
+        SEPAR
+        printf("Test with tag_ctl()/Interrupt signal on occupied level. Press Enter to continue...\n");
+        getchar();
+        
+        if(!test_busy_ctl_interrupt()) return -1;
+
+        printf("Test with tag_ctl()/Interrupt signal on occupied level executed Succesfully!\n(check 'dmesg' for log if needed and possibly clear the log)\n\n");
+        
+
+        SEPAR
+        printf("Test with basic send/receive. Press Enter to continue...\n");
+        getchar();
+
+        if(!test_basic_read_write(11, 11)) return -1;
+
+        printf("Test with basic send/receive executed Succesfully!\n(check 'dmesg' for log if needed and possibly clear the log)\n\n");
+        
+        
+
+        SEPAR
+        printf("Test with different EUID! Press Enter to continue...");
+        getchar();
+
+        if(!test_permissions()) {
+            
+            seteuid(0);
+            system("sudo userdel -f test_user1");
+            system("sudo userdel -f test_user2");
+
+            return -1;
+        }
+        printf("Test with different EUID executed Succesfully!\n(check 'dmesg' for log if needed and possibly clear the log)\n\n");
+        
+        
+
+        SEPAR
+        printf("Test with multiple send/receive. Use the other terminal to check on the state of the tags while the test runs.\nPress Enter to continue...\n");
+        getchar();
+
+        if(!test_stress(3, 4, 100, 100, 100)) return -1;
+
+        printf("Test with multiple send/receive executed Succesfully!\n(check 'dmesg' for log if needed and possibly clear the log)\n\n");
+
     }
-    printf("Test with different EUID executed Succesfully!\n(check 'dmesg' for log if needed and possibly clear the log)\n\n");
-    
-    
 
     SEPAR
-    printf("Test with multiple send/receive. Use the other terminal to check on the state of the tags while the test runs.\nPress Enter to continue...\n");
+    printf("Test with singe send and multiple receive.\nPress Enter to continue...\n");
     getchar();
+    
+    int i;
+    for(i = 100; i < 2000; i += 100)
+        if(!test_time(i, 5)) return -1;
 
-    if(!test_stress(3, 4, 100, 100, 100)) return -1;
-
-    printf("Test with multiple send/receive executed Succesfully!\n(check 'dmesg' for log if needed and possibly clear the log)\n\n");
+    printf("Test with singe send and multiple receive executed Succesfully!\n(check 'dmesg' for log if needed and possibly clear the log)\n\n");
 
 
 
@@ -918,8 +937,83 @@ int test_stress(int tags, int levels, int senders, int receivers, int iterations
 
 
 
+// Test the time for a single sender and "receivers" number of receiving threads for "try" number of times
+int test_time(int receivers, int try) {
+    
+    int ret_val, ret, tag, i, j;
+    pthread_t recv_thread[receivers], snd_thread;
+    input_t input_recv, input_send;
+    struct timeval tval_before, tval_after, tval_result;
+
+    // Test basic send/receive
+    printf("\nTesting a 1 sender %d receivers situation (TID %d)\n\n", receivers, gettid());
+
+    // Create Tag
+    printf("\nCreate Tag instance\n");
+    tag = tag_get(0, TAG_CREAT, TAG_PERM_USR);
+    if(tag < 0) {
+        printf("Error in creating Tag with IPC_PRIVATE (tag %d)\n", tag);
+        return 0;
+    }
+    printf("Created Tag with descriptor %d\n", tag);
+
+    // Different receiving sizes are tried to check if the received message is actually different
+    input_recv = (input_t){ .tag = tag, .level = 17, .size = 0, .iteration = 1};
+    input_send = (input_t){ .tag = tag, .level = 17, .size = 0, .iteration = 1};
+
+    // Receiving thread started
+    for(i = 0; i < try; i++) {
+        
+        
+        for(j = 0; j < receivers; j++) {
+            ret = pthread_create(&recv_thread[j], 0, receive_thread, &input_recv);
+            if(ret != 0) {
+                printf("Error creating thread, error: %d\n", ret);
+                return 0;
+            }
+
+            //printf("Receive thread started\n");
+        }
 
 
+        // Sleep to let the subsequent sender see both receiver in the level
+        sleep(2);
+
+        printf("Start measuring time\n");
+        gettimeofday(&tval_before, NULL);
+
+        // start meausiring time
+        ret = pthread_create(&snd_thread, 0, send_thread, &input_send);
+        if(ret != 0) {
+            printf("Error creating thread, error: %d\n", ret);
+            return 0;
+        }
+
+
+        for(j = 0; j < receivers; j++) {
+            pthread_join(recv_thread[j], 0);
+        }
+
+        gettimeofday(&tval_after, NULL);
+
+        timersub(&tval_after, &tval_before, &tval_result);
+
+        printf("Measured time for %d receivers: %ld.%06ld\n", receivers, (long int)tval_result.tv_sec, (long int)tval_result.tv_usec);
+
+        pthread_join(snd_thread, 0);
+    }
+
+
+
+
+    printf("\nDone. Deleting tag\n");
+
+    ret_val = tag_ctl(tag, TAG_DELETE);
+    
+    printf("Delete done. ret_val: %d\n", ret_val);
+
+    return 1;
+}
 
 
 
@@ -939,21 +1033,23 @@ void* receive_thread(void* input) {
     size        = ((input_t*) input) -> size;
     iteration   = ((input_t*) input) -> iteration;
 
-    buffer = malloc(sizeof(char) * (size + 1));
-    if(buffer == 0) printf("Error in allocating buffer for receiver (TID %d)\n", gettid());
+    TEST_TIME {
+        buffer = malloc(sizeof(char) * (size + 1));
+        if(buffer == 0) printf("Error in allocating buffer for receiver (TID %d)\n", gettid());
+    }
 
-    printf("[RECEIVE %d] Receive started\n", gettid());
+    TEST_TIME printf("[RECEIVE %d] Receive started\n", gettid());
 
     for(i = 0; i < iteration; i++) {
-        memset(buffer, 0, sizeof(char) * (size + 1));
+        TEST_TIME memset(buffer, 0, sizeof(char) * (size + 1));
         ret_val = tag_receive(tag, level, buffer, size);
-        printf("[RECEIVE %d] Receive done. ret_val: %d, buffer: %s, Last char: %d\n", gettid(), ret_val, buffer, buffer[size]);
+        TEST_TIME printf("[RECEIVE %d] Receive done. ret_val: %d, buffer: %s, Last char: %d\n", gettid(), ret_val, buffer, buffer[size]);
         if(ret_val == 0) { printf("[RECEIVE %d] Receive got it by Interrupt/Awake All. Exiting.\n", gettid()); break; }
         if(ret_val < 0)  { printf("[RECEIVE %d] Error in receiving. Exiting\n", gettid()); break; }
     }
 
-    printf("[RECEIVE %d] Receive exiting\n", gettid());
-    free(buffer);
+    TEST_TIME printf("[RECEIVE %d] Receive exiting\n", gettid());
+    TEST_TIME free(buffer);
 
     return 0;
 
@@ -970,28 +1066,31 @@ void* send_thread(void* input) {
     size        = ((input_t*) input) -> size;
     iteration   = ((input_t*) input) -> iteration;
 
-    buffer = malloc(sizeof(char) * 65);
-    if(buffer == 0) printf("Error in allocating buffer for sender (TID %d)\n", gettid());
-   
+    TEST_TIME {
+        buffer = malloc(sizeof(char) * 65);
+        if(buffer == 0) printf("Error in allocating buffer for sender (TID %d)\n", gettid());
+    }
 
-    printf("[SEND %d] Sender started\n", gettid());
+    TEST_TIME printf("[SEND %d] Sender started\n", gettid());
 
     for(i = 0; i < iteration; i++) {
-        memset(buffer, 0, sizeof(char) * 65);
-        printf("[SEND %d] Sender calling (iteration %d)\n", gettid(), i);
-        if(sprintf(buffer, "Messaggio-prova(Tag %d, Level %d, Iteration %d)", tag, level, i) < 0) {
-            printf("[SEND %d] Error in generating message buffer-\n", gettid());
-            break;
+        TEST_TIME {
+            memset(buffer, 0, sizeof(char) * 65);
+            printf("[SEND %d] Sender calling (iteration %d)\n", gettid(), i);
+            if(sprintf(buffer, "Messaggio-prova(Tag %d, Level %d, Iteration %d)", tag, level, i) < 0) {
+                printf("[SEND %d] Error in generating message buffer-\n", gettid());
+                break;
+            }
         }
         ret_val = tag_send(tag, level, buffer, size);
-        printf("[SEND %d] Sender done. ret_val: %d\n", gettid(), ret_val);
+        TEST_TIME printf("[SEND %d] Sender done. ret_val: %d\n", gettid(), ret_val);
         if(ret_val == 0) { printf("[SEND %d] Send Occupied/No Receiver.\n", gettid());}
         if(ret_val < 0)  { printf("[SEND %d] Error in sending. Exiting\n", gettid()); break; }
     
     }
 
-    printf("[SEND %d] Send exiting\n", gettid());
-    free(buffer);
+    TEST_TIME printf("[SEND %d] Send exiting\n", gettid());
+    TEST_TIME free(buffer);
     
 
     return 0;

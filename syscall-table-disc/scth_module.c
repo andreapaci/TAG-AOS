@@ -20,6 +20,7 @@ MODULE_DESCRIPTION("System call table discovery and hacking");
 
 #include <linux/string.h>
 #include <linux/slab.h>
+#include <linux/jiffies.h>
 
 #include "../utils/include/bitmask.h"
 #include "../utils/include/hashmap.h"
@@ -845,9 +846,12 @@ int test_hashmap(void) {
 
 
     int tries, i;
+    unsigned long time_start, time_tot; 
     tries = 1556;
     i = 1;
 
+    time_start = jiffies;
+    
     preempt_disable();
 
     for(; i < tries; i++) {
@@ -891,6 +895,10 @@ int test_hashmap(void) {
     }
 
     preempt_enable();
+
+    time_tot = jiffies - time_start;
+
+    printk("[TEST_FUNC]: Time elapsed: %lu microsec\n", time_tot * 1000000 / HZ);
 
     printk("[TEST_FUNC]: Freeing space\n");
 
