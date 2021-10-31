@@ -5,7 +5,6 @@ export TEST_FUNC=0          # set 1 to run functionality test on some utilities 
 export TEST_SYSCALL=0       # set 1 to test the System Call Installer module without the Tag Module and run basic functionality test, 0 otherwise
 export MOD_DEBUG=1          # set 1 to enable debug/extra printing on kernel-level log buffer, 0 otherwise
 
-#root_dir = $PWD
 
 current_dir=${PWD##*/} 
 

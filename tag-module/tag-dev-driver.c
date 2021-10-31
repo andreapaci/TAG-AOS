@@ -363,7 +363,7 @@ static long dev_ioctl(struct file* filp, unsigned int command, unsigned long par
 
 
 // Append the source to dest and free the source
-// If free is not big enough, it will allocate a new buffer for dest and return it
+// If dest is not big enough, it will allocate a new buffer for dest and return it
 // It returns 0 in case the buffer could not be allocated
 static char* append_buffer(char* dest, char* source, int* nbytes, int* curr_block) {
     

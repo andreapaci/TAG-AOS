@@ -22,7 +22,7 @@ static void print_level(tag_level_t* tag_level, int tag);
  *  @param  permission to enable the tag to be used by all threads 
  *          or only by the one of the same user who created the TAG
  * 
- *  @return Tag descriptor value used to reference the Tag or ERNO code to signal error
+ *  @return Tag descriptor value used to reference the Tag or ERRNO code to signal error
  */
 int tag_get(int key, int command, int permission) {
 
@@ -64,7 +64,7 @@ int tag_get(int key, int command, int permission) {
         // Access common lock in write mode. This is necessary because common data structure will be accessed
         //  - Hashamp (containing the mapping [key -> tag descriptor])
         //  - Bitmask (for retriving the first avaliable tag descriptor value)
-        // Those structs are not safe to use, in particular the Hashmap because of the bucket resizing (memory allocation/deallocation)
+        // Those structs are not safe to use in parallel, in particular the Hashmap because of the bucket resizing (memory allocation/deallocation)
         // The bitmask could theoretically be accessed in concurrency using the "atmomic" operation on bits, but since the only access to it
         // is next to the one made for the hashmap (even for deleting a tag), there's no real performance boost in enabling concurrent
         // access (also considering the access to the bitmask is fast enough)
@@ -322,12 +322,22 @@ int tag_send(int tag, int level, char* buffer, size_t size) {
     }
 
     up_read(&(tag_entry -> level_lock[level]));
+    
+    // Try to acquire mutex (if fails, it means some else is writing)
+    if(!mutex_trylock(&(tag_level -> w_mutex))) {
+        PRINT
+        printk("%s: Tag %d on level %d is contended/occupied.\b", MODNAME, tag, level);
+        up_read(&(tag_level -> rcu_lock));
+        up_read(&(tag_lock[tag]));
+        return 0;
+    }
 
 
     //Those next two "if" are separted to print distinguished info for the two cases
     if((tag_level -> ready) == 1) {
         PRINT
         printk("%s: Tag %d on level %d is occupied.\b", MODNAME, tag, level);
+        mutex_unlock(&(tag_level -> w_mutex));
         up_read(&(tag_level -> rcu_lock));
         up_read(&(tag_lock[tag]));
         return 0;
@@ -336,19 +346,12 @@ int tag_send(int tag, int level, char* buffer, size_t size) {
     if(atomic_read(&(tag_level -> waiting)) == 0) {
         PRINT
         printk("%s: Tag %d on level %d has no reader.\b", MODNAME, tag, level);
+        mutex_unlock(&(tag_level -> w_mutex));
         up_read(&(tag_level -> rcu_lock));
         up_read(&(tag_lock[tag]));
         return 0;
     }
 
-    // Try to acquire mutex(if fails, it means some else is writing)
-    if(!mutex_trylock(&(tag_level -> w_mutex))) {
-        PRINT
-        printk("%s: Tag %d on level %d is contended/occupied.\b", MODNAME, tag, level);
-        up_read(&(tag_level -> rcu_lock));
-        up_read(&(tag_lock[tag]));
-        return 0;
-    }
 
     // Only if size is > 0 the copy goes on, otherwise, just wake up
     if(size > 0) {
@@ -368,7 +371,8 @@ int tag_send(int tag, int level, char* buffer, size_t size) {
 
     PRINT
     print_level(tag_level, tag);
-
+    
+    // This will also prevent other senders to overwirte the buffer
     tag_level -> ready = 1;
     
     mutex_unlock(&(tag_level -> w_mutex));
@@ -478,13 +482,11 @@ int tag_receive(int tag, int level, char* buffer, size_t size) {
 
     up_read(&(tag_entry -> level_lock[level]));
     
-    // Important: if in this frame of time a new epoch level gets created (leving this thread with an old version) there's is no problem
+    // Important: if in this frame of time a new epoch level gets created (leaving this thread with an old version) there's is no problem
     // since it will enter in the next if, and will get as tag_level the updated version (new epoch one)
 
 
     // If the specified tag level has a send already, create a new epoch level and register on that one
-
-   
     if(tag_level -> ready == 1) {
 
         PRINT
@@ -839,7 +841,7 @@ int tag_ctl(int tag, int command) {
         }
 
         // Taking the common_lock in write will assure that no thread is accessing the common data structures
-        // (ie no thread is trying to add/get/delete any tag and no thread is starting a tag_send or tag_rcv)
+        // (i.e. no thread is trying to add/get/delete any tag and no thread is starting a tag_send or tag_rcv)
         tag_t* tag_entry; 
         tag_entry = tags[tag];
 
@@ -880,7 +882,7 @@ int tag_ctl(int tag, int command) {
        
 
         // clear_tag_common() is done here instead than above where tags[tag] is set to 0 to be able to restore the situation in case
-        // any of the above instruction fails (there's no way)
+        // any of the above instruction fails
         if(unlikely(clear_tag_common(tag_entry -> key, tag_entry -> tag_key) != 0)) {
             PRINT
             printk("%s: Fatal Error! Could not deallocate BM and HM for Tag %d.\n", MODNAME, tag_entry -> tag_key);
@@ -888,7 +890,7 @@ int tag_ctl(int tag, int command) {
             return -EINTR;
         }
 
-        // Delete all leveles
+        // Delete all levels
         clear_tag_level(tag_entry -> tag_level);
 
         if(tag_entry -> tag_level != 0) kfree(tag_entry -> tag_level);
@@ -899,7 +901,6 @@ int tag_ctl(int tag, int command) {
         printk("%s: CTL DELETE removed succesfully tag %d\n", MODNAME, tag);
 
 
-        //unlock
         PRINT
         print_tag();
 
@@ -914,7 +915,7 @@ int tag_ctl(int tag, int command) {
 
 
 
-// Some helper function
+// ---------------- Some helper function ---------------- \\
 
 
 

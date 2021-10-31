@@ -18,7 +18,7 @@
 
 #define CHECKPERM(tag_entry) (tag_entry -> permission == TAG_PERM_USR && current_euid().val != 0 && tag_entry -> euid != current_euid().val)
 
-// Single entry og the Hashmap
+// Single entry of the Hashmap
 typedef struct tag_table_entry_struct {
     int key;
     int tag_key;
@@ -30,7 +30,7 @@ typedef struct tag_level_struct {
     size_t size;            // Size of the message
     int ready;              // Signal wether the tag level is occupied in a Tag Send (1) or not (0)
     int epoch;              // Level Epoch (RCU alike)
-    atomic_t waiting;       // Number of waiting receiving thread on this level
+    atomic_t waiting __attribute__((aligned (64)));       // Number of waiting receiving thread on this level
     wait_queue_head_t       /* Wait Queue for receiving thread waiting for the message delivery */
             local_wq;
     struct rw_semaphore     /* RW Semaphore to synsconize the access to the single level instance*/
@@ -49,7 +49,7 @@ typedef struct tag_struct {
     int permission;             // Indicates if the Tag can be accessed by all user or only by the user who created the tag
     uid_t euid;                 // Effective User ID related to the task calling the system call
     tag_level_t** tag_level;    // List of pointers to the various levels
-    atomic_t waiting;           // Number of Receiving thread on this Tag
+    atomic_t waiting __attribute__((aligned (64)));           // Number of Receiving thread on this Tag
     struct rw_semaphore         /* RW Semaphore to syncronize access to the pointer list of levels */
         level_lock[LEVELS]; 
 } tag_t;

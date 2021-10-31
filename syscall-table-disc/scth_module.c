@@ -1,7 +1,7 @@
 /**
  *  @file   scth.c
  *  @brief  Source code for the module used for discovering the system call table position
- *          with its free entries at runtime 
+ *          with its free entries at runtime. It also contains a bisc functionality test on the 2 structures used in TAG module: Bitmask and Hasmap
  *  @author Andrea Paci
  */ 
 

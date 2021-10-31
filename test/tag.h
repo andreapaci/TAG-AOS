@@ -1,6 +1,7 @@
 /**
  *  @file   tag-syscall.h
  *  @brief  Header file containing the definition of TAG Module system calls
+ *          Note: this file should be merged with the one on "tag-module/include"
  *  @author Andrea Paci
  */ 
 

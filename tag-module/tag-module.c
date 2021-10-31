@@ -37,7 +37,8 @@ uint64_t tag_hash(const void *item, uint64_t seed0, uint64_t seed1 ) {
 }
 
 
-
+// params used to dynamically inject in the userspace header the
+// 4 system calls displacement value in the SC Table
 module_param(tag_get_nr,     int, S_IRUGO);
 module_param(tag_send_nr,    int, S_IRUGO);
 module_param(tag_receive_nr, int, S_IRUGO);
@@ -90,9 +91,6 @@ int init_module(void) {
 static int initialize(void) {
 
     // Initialize TAG Table which maps "key" with "Tag Key" and the relative buffer
-
-    //NON VA BENE PECHE KZALLOC USA DUE PARAM
-    // METTI BENE ERRORI RITORNO
     tag_table = hashmap_new_with_allocator(
         0, 0, 0, sizeof(tag_table_entry_t), 
         HASHMAP_CAP, SEED0, SEED1, 
@@ -156,6 +154,8 @@ void cleanup_module(void) {
 
     printk("%s: Unmounting.\n", MODNAME);
     
+    unregister_chardev();
+    
     // Check if address memory of the subsequent variable is avaliable to be freed or not
     // (Using kfree() on an unitialized address will result in not being able to unload the module)
     if(tag_bitmask != 0)
@@ -177,5 +177,5 @@ void cleanup_module(void) {
         kfree(tags);
     }
 
-    unregister_chardev();
+    
 }

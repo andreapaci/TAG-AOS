@@ -1,5 +1,5 @@
-#define TAG_OPEN    0
-#define TAG_CREAT   1
+#define TAG_OPEN        0
+#define TAG_CREAT       1
 
 #define TAG_AWAKE_ALL   0
 #define TAG_DELETE      1

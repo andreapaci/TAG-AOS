@@ -1,6 +1,6 @@
 /**
  *  @file   scth_disc.c
- *  @brief  Source code for discovering the position of the System Call Table 
+ *  @brief  Source code for discovering the position of the System Call Table and the insertion of a new system call
  *  @author Andrea Paci
  */ 
 
